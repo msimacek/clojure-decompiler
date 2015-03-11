@@ -1,6 +1,7 @@
 (ns decompiler.core
   (:gen-class :main true)
-  (:require [clojure.string :as string])
+  (:require [clojure.string :as string]
+            [clojure.java.io :as io])
   (:import (org.apache.bcel.classfile ClassParser)
            (org.apache.bcel.generic
              ConstantPoolGen InstructionList
@@ -80,7 +81,16 @@
   "Returns file paths as BCEL's JavaClasses"
   (map #(.parse (ClassParser. %)) files))
 
+(defn decompile-classes [paths]
+  "Decopmiles all class files at given paths. Recurses into directories"
+  (->> paths
+      (mapcat #(file-seq (io/file %)))
+      (map str)
+      (filter #(.endsWith % ".class"))
+      (get-classes)
+      (map decompile-class)
+      (apply str)))
+
 (defn -main [& paths]
   "Entry point. Decompiles class files given as commandline arguments"
-  (let [classes (get-classes paths)]
-    (dorun (map (comp prn decompile-class) classes))))
+  (println (decompile-classes paths)))
