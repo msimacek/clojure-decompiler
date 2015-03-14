@@ -86,9 +86,16 @@
                                     (peek stack)
                                     "java.lang.Double/valueOf"
                                     (peek stack)
+                                    "java.lang.Integer/valueOf"
+                                    ;may appear when boxing int return from interop
+                                    (peek stack)
                                     "clojure.lang.RT/readString"
                                     {:type :const
-                                     :value (clojure.lang.RT/readString (:value (peek stack)))})]
+                                     :value (clojure.lang.RT/readString (:value (peek stack)))}
+                                    {:type :invoke-static
+                                     :class (.getClassName insn pool)
+                                     :method (.getMethodName insn pool)
+                                     :args (peek-n stack argc)})]
                          (recur code
                                 (conj (pop-n stack argc) expr)
                                 vars fields
@@ -112,10 +119,12 @@
         [result fields]))))
 
 (defn expr->clojure [exprs]
-  (let [expr (if (vector? exprs) (last exprs) exprs)] ; TODO more exprs form `do`
+  (let [expr (if (vector? exprs) (last exprs) exprs)
+        args #(map expr->clojure (:args expr))] ; TODO more exprs form `do`
     (condp = (:type expr)
       :const (:value expr)
-      :invoke (list* (:name expr) (map expr->clojure (:args expr)))
+      :invoke (list* (:name expr) (args))
+      :invoke-static (list* (symbol (str (:class expr) \/ (:method expr))) (args))
       :arg (symbol (str "arg" (:index expr)))
       ())))
 

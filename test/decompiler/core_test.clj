@@ -38,3 +38,5 @@
 (deftest-decompile simple-clj-call (defn test-fn [] (println "Hello")))
 (deftest-decompile clj-call-param (defn test-fn [arg1] (str arg1)))
 (deftest-decompile clj-call-param2 (defn test-fn [arg1 arg2] (str arg1 arg2)))
+(deftest-decompile clj-call-nested (defn test-fn [arg1 arg2] (str (str arg1 2) 1)))
+(deftest-decompile clj-call-static (defn test-fn [arg1 arg2] (java.lang.Double/compare 1.0 1.00001)))
