@@ -25,6 +25,9 @@
 (defn insn-method [insn pool]
   (str (.getClassName insn pool) \/ (.getMethodName insn pool)))
 
+(defn insn-field [insn pool]
+  (str (.getClassName insn pool) \/ (.getFieldName insn pool)))
+
 (defn code->expr [clazz method fields]
   (let [code (get-instructions method)
         class-name (.getClassName clazz)
@@ -36,10 +39,15 @@
            result []]
       (if insn
         (condp instance? insn
-          GETSTATIC (if (= (.getClassName insn pool) class-name)
-                      (recur code ; TODO getstatic on other objects
-                             (conj stack (fields (.getFieldName insn pool)))
-                             vars fields result))
+          GETSTATIC (recur code ; TODO getstatic on other objects
+                           (conj stack (cond
+                                         (= (.getClassName insn pool) class-name)
+                                         (fields (.getFieldName insn pool))
+                                         (= (insn-field insn pool) "java.lang.Boolean/TRUE")
+                                         {:type :const :value true}
+                                         (= (insn-field insn pool) "java.lang.Boolean/FALSE")
+                                         {:type :const :value false}))
+                                 vars fields result)
           PUTSTATIC (if (= (.getClassName insn pool) class-name)
                       (recur code ; TODO putstatic on other objects
                              (pop stack)

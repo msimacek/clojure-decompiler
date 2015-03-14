@@ -33,4 +33,6 @@
 (deftest-decompile return-big-int (defn test-fn [] 12345678901234567890N))
 (deftest-decompile return-double (defn test-fn [] 1.1))
 (deftest-decompile return-nil (defn test-fn [] nil))
+(deftest-decompile return-true (defn test-fn [] true))
+(deftest-decompile return-false (defn test-fn [] false))
 (deftest-decompile simple-clj-call (defn test-fn [] (println "Hello")))
