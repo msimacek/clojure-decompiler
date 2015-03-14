@@ -36,3 +36,5 @@
 (deftest-decompile return-true (defn test-fn [] true))
 (deftest-decompile return-false (defn test-fn [] false))
 (deftest-decompile simple-clj-call (defn test-fn [] (println "Hello")))
+(deftest-decompile clj-call-param (defn test-fn [arg1] (str arg1)))
+(deftest-decompile clj-call-param2 (defn test-fn [arg1 arg2] (str arg1 arg2)))

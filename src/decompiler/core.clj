@@ -5,7 +5,7 @@
   (:import (org.apache.bcel.classfile ClassParser)
            (org.apache.bcel.generic
              ConstantPoolGen InstructionList
-             LoadInstruction ConstantPushInstruction
+             LoadInstruction StoreInstruction ConstantPushInstruction
              ACONST_NULL ARETURN DUP LDC LDC_W LDC2_W INVOKESTATIC PUTSTATIC
              GETSTATIC INVOKEVIRTUAL INVOKEINTERFACE)))
 
@@ -34,7 +34,8 @@
         pool (ConstantPoolGen. (.getConstantPool clazz))]
     (loop [[insn & code] code
            stack []
-           vars []
+           vars (mapv (fn [n] {:type :arg :index n})
+                      (range (inc (count (.getArgumentTypes method)))))
            fields fields
            result []]
       (if insn
@@ -57,6 +58,9 @@
           LoadInstruction (recur code
                                  (conj stack (nth vars (.getIndex insn)))
                                  vars fields result)
+          StoreInstruction (recur code (pop stack)
+                                  (assoc vars (.getIndex insn) (peek stack))
+                                  fields result)
           DUP (recur code (conj stack (peek stack)) vars fields result)
           LDC (recur code
                      (conj stack {:type :const :value (.getValue insn pool)})
@@ -112,6 +116,7 @@
     (condp = (:type expr)
       :const (:value expr)
       :invoke (list* (:name expr) (map expr->clojure (:args expr)))
+      :arg (symbol (str "arg" (:index expr)))
       ())))
 
 (defn decompile-fn [clazz]
@@ -120,7 +125,9 @@
         [_ fields] (code->expr clazz clinit {})
         invoke (find-method clazz "invoke") ;TODO multiple arities
         [exprs _] (code->expr clazz invoke fields)]
-    (list 'defn (symbol fn-name) [] (expr->clojure exprs))))
+    (list 'defn (symbol fn-name)
+          (mapv #(symbol (str "arg" %)) (range 1 (inc (count (.getArgumentTypes invoke)))))
+          (expr->clojure exprs))))
 
 (defn decompile-class [clazz]
   "Decompiles single class file"
