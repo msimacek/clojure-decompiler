@@ -25,6 +25,6 @@
    `(deftest ~name (is (= '~expected-code (compile-and-decompile '~code)))))))
 
 
-(deftest-decompile test-empty-fn (defn test-fn [] ()) (defn test-fn [] ()))
+(deftest-decompile test-empty-fn (defn test-fn [] ()))
 (deftest-decompile test-return-0 (defn test-fn [] 0))
 (deftest-decompile test-simple-clj-call (defn test-fn [] (println "Hello")))

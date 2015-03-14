@@ -67,16 +67,16 @@
                      (conj stack {:type :const :value (.getValue insn pool)})
                      vars result)
           INVOKEINTERFACE (if (= (.getMethodName insn pool) "invoke") ;TODO check type
-                          (let [argc (count (.getArgumentTypes insn pool))
-                                argc1 (inc argc)
-                                expr {:type :invoke
-                                      :args (peek-n stack argc)
-                                      :name (:name (peek-at stack argc1))}]
-                            (recur code
-                                   (conj (pop-n stack argc1) expr)
-                                   vars
-                                   (conj result expr)))
-                          (recur code (pop stack) vars result)) ; TODO handle interop
+                            (let [argc (count (.getArgumentTypes insn pool))
+                                  argc1 (inc argc)
+                                  expr {:type :invoke
+                                        :args (peek-n stack argc)
+                                        :name (:name (peek-at stack argc1))}]
+                              (recur code
+                                     (conj (pop-n stack argc1) expr)
+                                     vars
+                                     (conj result expr)))
+                            (recur code (pop stack) vars result)) ; TODO handle interop
           (recur code stack vars result))
         result))))
 
@@ -84,7 +84,8 @@
   (let [expr (if (vector? exprs) (last exprs) exprs)] ; TODO more exprs form `do`
     (condp = (:type expr)
       :const (:value expr)
-      :invoke (list* (:name expr) (map expr->clojure (:args expr))))))
+      :invoke (list* (:name expr) (map expr->clojure (:args expr)))
+      ())))
 
 (defn decompile-fn [clazz]
   (let [[fn-ns fn-name] (map demunge (string/split (.getClassName clazz) #"\$" 2))
@@ -106,11 +107,11 @@
 (defn decompile-classes [paths]
   "Decopmiles all class files at given paths. Recurses into directories"
   (->> paths
-      (mapcat #(file-seq (io/file %)))
-      (map str)
-      (filter #(.endsWith % ".class"))
-      (get-classes)
-      (keep decompile-class)))
+       (mapcat #(file-seq (io/file %)))
+       (map str)
+       (filter #(.endsWith % ".class"))
+       (get-classes)
+       (keep decompile-class)))
 
 (defn -main [& paths]
   "Entry point. Decompiles class files given as commandline arguments"
