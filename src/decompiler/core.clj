@@ -71,7 +71,12 @@
                                      :ns (demunge (:value (peek-at stack 1)))
                                      :name (demunge (:value (peek stack)))}
                                     "java.lang.Long/valueOf"
-                                    (peek stack))]
+                                    (peek stack)
+                                    "java.lang.Double/valueOf"
+                                    (peek stack)
+                                    "clojure.lang.RT/readString"
+                                    {:type :const
+                                     :value (clojure.lang.RT/readString (:value (peek stack)))})]
                          (recur code
                                 (conj (pop-n stack argc) expr)
                                 vars fields
