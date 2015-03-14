@@ -25,7 +25,6 @@
    `(deftest ~test-name (is (= '~expected-code (compile-and-decompile ~(name test-name) '~code)))))))
 
 
-(deftest-decompile empty-fn (defn test-fn [] ()))
 (deftest-decompile return-0 (defn test-fn [] 0))
 (deftest-decompile return-string (defn test-fn [] "Hello"))
 (deftest-decompile return-long (defn test-fn [] 123456789))
@@ -40,3 +39,4 @@
 (deftest-decompile clj-call-param2 (defn test-fn [arg1 arg2] (str arg1 arg2)))
 (deftest-decompile clj-call-nested (defn test-fn [arg1 arg2] (str (str arg1 2) 1)))
 (deftest-decompile clj-call-static (defn test-fn [arg1 arg2] (java.lang.Double/compare 1.0 1.00001)))
+(deftest-decompile clj-call-static (defn test-fn [] java.lang.Double/NaN))

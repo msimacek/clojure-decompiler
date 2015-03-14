@@ -40,15 +40,18 @@
            result []]
       (if insn
         (condp instance? insn
-          GETSTATIC (recur code ; TODO getstatic on other objects
+          GETSTATIC (recur code
                            (conj stack (cond
                                          (= (.getClassName insn pool) class-name)
                                          (fields (.getFieldName insn pool))
                                          (= (insn-field insn pool) "java.lang.Boolean/TRUE")
                                          {:type :const :value true}
                                          (= (insn-field insn pool) "java.lang.Boolean/FALSE")
-                                         {:type :const :value false}))
-                                 vars fields result)
+                                         {:type :const :value false}
+                                         :default {:type :get-field
+                                                   :class (.getClassName insn pool)
+                                                   :field (.getFieldName insn pool)}))
+                           vars fields result)
           PUTSTATIC (if (= (.getClassName insn pool) class-name)
                       (recur code ; TODO putstatic on other objects
                              (pop stack)
@@ -125,8 +128,8 @@
       :const (:value expr)
       :invoke (list* (:name expr) (args))
       :invoke-static (list* (symbol (str (:class expr) \/ (:method expr))) (args))
-      :arg (symbol (str "arg" (:index expr)))
-      ())))
+      :get-field (symbol (str (:class expr) \/ (:field expr)))
+      :arg (symbol (str "arg" (:index expr))))))
 
 (defn decompile-fn [clazz]
   (let [[fn-ns fn-name] (map demunge (string/split (.getClassName clazz) #"\$" 2))
