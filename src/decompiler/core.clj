@@ -6,8 +6,8 @@
            (org.apache.bcel.generic
              ConstantPoolGen InstructionList
              LoadInstruction ConstantPushInstruction
-             ARETURN DUP LDC INVOKESTATIC PUTSTATIC GETSTATIC INVOKEVIRTUAL
-             INVOKEINTERFACE)))
+             ACONST_NULL ARETURN DUP LDC LDC_W LDC2_W INVOKESTATIC PUTSTATIC
+             GETSTATIC INVOKEVIRTUAL INVOKEINTERFACE)))
 
 (defn pop-n [stack n] (let [c (count stack)] (subvec stack 0 (- c n))))
 (defn peek-n [stack n] (let [c (count stack)] (subvec stack (- c n) c)))
@@ -53,6 +53,13 @@
           LDC (recur code
                      (conj stack {:type :const :value (.getValue insn pool)})
                      vars fields result)
+          LDC_W (recur code ;FIXME copypaste
+                       (conj stack {:type :const :value (.getValue insn pool)})
+                       vars fields result)
+          LDC2_W (recur code ;FIXME copypaste
+                        (conj stack {:type :const :value (.getValue insn pool)})
+                        vars fields result)
+          ACONST_NULL (recur code (conj stack {:type :const :value nil}) vars fields result)
           ConstantPushInstruction (recur code
                                          (conj stack {:type :const
                                                       :value (.getValue insn)})
