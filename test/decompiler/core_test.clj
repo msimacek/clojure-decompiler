@@ -5,9 +5,9 @@
   (:require [clojure.test :refer :all]
             [decompiler.core :refer :all]))
 
-(defn compile-and-decompile [code]
-  ; TODO get rid of that array
-  (let [dir (Files/createTempDirectory "decompiler-test" (into-array FileAttribute []))]
+(defn compile-and-decompile [test-name code]
+  (let [dir (Files/createTempDirectory (str "decompiler-test-" test-name)
+                                       (into-array FileAttribute []))]
     (-> dir .toFile .deleteOnExit)
     (binding [*compile-files* true
               *compile-path* (str dir)]
@@ -16,15 +16,18 @@
     (decompile-classes [(str dir)])))
 
 (defmacro deftest-decompile
-  ([name code]
-   (deftest-decompile &form &env name code code))
-  ([name code expected-code]
+  ([test-name code]
+   (deftest-decompile &form &env test-name code code))
+  ([test-name code expected-code]
    (let [to-code #(if (vector? %) % [%])
          code (to-code code)
          expected-code (to-code expected-code)]
-   `(deftest ~name (is (= '~expected-code (compile-and-decompile '~code)))))))
+   `(deftest ~test-name (is (= '~expected-code (compile-and-decompile ~(name test-name) '~code)))))))
 
 
-(deftest-decompile test-empty-fn (defn test-fn [] ()))
-(deftest-decompile test-return-0 (defn test-fn [] 0))
-(deftest-decompile test-simple-clj-call (defn test-fn [] (println "Hello")))
+(deftest-decompile empty-fn (defn test-fn [] ()))
+(deftest-decompile return-0 (defn test-fn [] 0))
+(deftest-decompile return-string (defn test-fn [] "Hello"))
+(deftest-decompile return-long (defn test-fn [] 123456))
+(deftest-decompile return-nil (defn test-fn [] nil))
+(deftest-decompile simple-clj-call (defn test-fn [] (println "Hello")))
