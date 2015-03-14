@@ -110,9 +110,8 @@
       (map str)
       (filter #(.endsWith % ".class"))
       (get-classes)
-      (map decompile-class)
-      (apply str)))
+      (keep decompile-class)))
 
 (defn -main [& paths]
   "Entry point. Decompiles class files given as commandline arguments"
-  (println (decompile-classes paths)))
+  (println (apply str (decompile-classes paths))))
