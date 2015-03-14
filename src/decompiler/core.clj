@@ -42,7 +42,7 @@
           (recur code stack result))
         result))))
 
-(defn decompile-code [clazz method fields]
+(defn code->expr [clazz method fields]
   (let [code (get-instructions method)
         pool (ConstantPoolGen. (.getConstantPool clazz))]
     (loop [[insn & code] code
@@ -54,22 +54,29 @@
           LDC (recur code (conj stack (.getValue insn pool)) result)
           INVOKEINTERFACE (if (= (.getMethodName insn pool) "invoke")
                           (let [argc (count (.getArgumentTypes insn pool))
-                                argc1 (inc argc)]
+                                argc1 (inc argc)
+                                expr {:type :invoke
+                                      :args (peek-n stack argc)
+                                      :name (:name (peek-at stack argc1))}]
                             (recur code
-                                   (pop-n stack argc1)
-                                   (conj result
-                                         (list* (:name (peek-at stack (inc argc)))
-                                                (peek-n stack argc)))))
-                          (recur code (pop stack) result))
+                                   (conj (pop-n stack argc1) expr)
+                                   (conj result expr)))
+                          (recur code (pop stack) result)) ; TODO handle interop
           (recur code stack result))
         result))))
+
+(defn expr->clojure [exprs]
+  (let [expr (if (vector? exprs) (last exprs) exprs)] ; TODO more exprs form `do`
+    (condp = (:type expr)
+      :const (:value expr)
+      :invoke (list* (:name expr) (map expr->clojure (:args expr))))))
 
 (defn decompile-fn [clazz]
   (let [[fn-ns fn-name] (map demunge (string/split (.getClassName clazz) #"\$" 2))
         fields (populate-fields clazz)
         invoke (find-method clazz "invoke") ;TODO multiple arities
-        decompiled (decompile-code clazz invoke fields)]
-    (list 'defn (symbol fn-name) [] (first decompiled))))
+        exprs (code->expr clazz invoke fields)]
+    (list 'defn (symbol fn-name) [] (expr->clojure exprs))))
 
 (defn decompile-class [clazz]
   "Decompiles single class file"
