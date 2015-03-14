@@ -5,8 +5,9 @@
   (:import (org.apache.bcel.classfile ClassParser)
            (org.apache.bcel.generic
              ConstantPoolGen InstructionList
-             LoadInstruction
-             DUP LDC INVOKESTATIC PUTSTATIC GETSTATIC INVOKEVIRTUAL INVOKEINTERFACE)))
+             LoadInstruction ConstantPushInstruction
+             ARETURN DUP LDC INVOKESTATIC PUTSTATIC GETSTATIC INVOKEVIRTUAL
+             INVOKEINTERFACE)))
 
 (defn pop-n [stack n] (let [c (count stack)] (subvec stack 0 (- c n))))
 (defn peek-n [stack n] (let [c (count stack)] (subvec stack (- c n) c)))
@@ -52,15 +53,22 @@
           LDC (recur code
                      (conj stack {:type :const :value (.getValue insn pool)})
                      vars fields result)
-          INVOKESTATIC (cond
-                         (= (.getMethodName insn pool) "var") ; TODO verify type
+          ConstantPushInstruction (recur code
+                                         (conj stack {:type :const
+                                                      :value (.getValue insn)})
+                                         vars fields result)
+          INVOKESTATIC (let [argc (count (.getArgumentTypes insn pool))
+                             expr (condp = (insn-method insn pool)
+                                    "clojure.lang.RT/var"
+                                    {:type :var
+                                     :ns (demunge (:value (peek-at stack 1)))
+                                     :name (demunge (:value (peek stack)))}
+                                    "java.lang.Long/valueOf"
+                                    (peek stack))]
                          (recur code
-                                (conj (pop-n stack 2)
-                                      {:type :var
-                                       :ns (demunge (:value (peek-at stack 1)))
-                                       :name (demunge (:value (peek stack)))})
-                                vars fields result)
-                         :default (recur code stack vars fields result))
+                                (conj (pop-n stack argc) expr)
+                                vars fields
+                                (conj result expr)))
           INVOKEVIRTUAL (if (= (.getMethodName insn pool) "getRawRoot") ; TODO and is var
                           (recur code stack vars fields result) ; we have the var already
                           (recur code stack vars fields result)) ; TODO handle this
