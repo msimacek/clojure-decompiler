@@ -83,6 +83,7 @@
                                      vars fields
                                      (conj result expr)))
                             (recur code (pop stack) vars fields result)) ; TODO handle interop
+          ARETURN [(conj result (peek stack)) fields]
           (recur code stack vars fields result))
         [result fields]))))
 
