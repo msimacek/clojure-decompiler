@@ -5,7 +5,8 @@
   (:import (org.apache.bcel.classfile ClassParser)
            (org.apache.bcel.generic
              ConstantPoolGen InstructionList
-             LDC INVOKESTATIC PUTSTATIC GETSTATIC INVOKEVIRTUAL INVOKEINTERFACE)))
+             LoadInstruction
+             DUP LDC INVOKESTATIC PUTSTATIC GETSTATIC INVOKEVIRTUAL INVOKEINTERFACE)))
 
 (defn pop-n [stack n] (let [c (count stack)] (subvec stack 0 (- c n))))
 (defn peek-n [stack n] (let [c (count stack)] (subvec stack (- c n) c)))
@@ -47,12 +48,25 @@
         pool (ConstantPoolGen. (.getConstantPool clazz))]
     (loop [[insn & code] code
            stack []
-           result ()]
+           vars []
+           result []]
       (if insn
         (condp instance? insn
-          GETSTATIC (recur code (conj stack (fields (.getFieldName insn pool))) result)
-          LDC (recur code (conj stack (.getValue insn pool)) result)
-          INVOKEINTERFACE (if (= (.getMethodName insn pool) "invoke")
+          GETSTATIC (recur code
+                           (conj stack (fields (.getFieldName insn pool)))
+                           vars
+                           result)
+          INVOKEVIRTUAL (if (= (.getMethodName insn pool) "getRawRoot") ; TODO and is var
+                          (recur code stack vars result) ; we have the var already
+                          (recur code stack vars result)) ; TODO handle this
+          LoadInstruction (recur code
+                                 (conj stack (nth vars (.getIndex insn)))
+                                 vars result)
+          DUP (recur code (conj stack (peek stack)) vars result)
+          LDC (recur code
+                     (conj stack {:type :const :value (.getValue insn pool)})
+                     vars result)
+          INVOKEINTERFACE (if (= (.getMethodName insn pool) "invoke") ;TODO check type
                           (let [argc (count (.getArgumentTypes insn pool))
                                 argc1 (inc argc)
                                 expr {:type :invoke
@@ -60,9 +74,10 @@
                                       :name (:name (peek-at stack argc1))}]
                             (recur code
                                    (conj (pop-n stack argc1) expr)
+                                   vars
                                    (conj result expr)))
-                          (recur code (pop stack) result)) ; TODO handle interop
-          (recur code stack result))
+                          (recur code (pop stack) vars result)) ; TODO handle interop
+          (recur code stack vars result))
         result))))
 
 (defn expr->clojure [exprs]
