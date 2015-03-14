@@ -21,8 +21,12 @@
 (defn demunge [what]
   (symbol (Compiler/demunge what)))
 
+(defn insn-method [insn pool]
+  (str (.getClassName insn pool) \/ (.getMethodName insn pool)))
+
 (defn code->expr [clazz method fields]
   (let [code (get-instructions method)
+        class-name (.getClassName clazz)
         pool (ConstantPoolGen. (.getConstantPool clazz))]
     (loop [[insn & code] code
            stack []
@@ -31,14 +35,16 @@
            result []]
       (if insn
         (condp instance? insn
-          GETSTATIC (recur code ; TODO getstatic on other objects
-                           (conj stack (fields (.getFieldName insn pool)))
-                           vars fields result)
-          PUTSTATIC (recur code ; TODO putstatic on other objects
-                           (pop stack)
-                           vars
-                           (assoc fields (.getFieldName insn pool) (peek stack))
-                           result)
+          GETSTATIC (if (= (.getClassName insn pool) class-name)
+                      (recur code ; TODO getstatic on other objects
+                             (conj stack (fields (.getFieldName insn pool)))
+                             vars fields result))
+          PUTSTATIC (if (= (.getClassName insn pool) class-name)
+                      (recur code ; TODO putstatic on other objects
+                             (pop stack)
+                             vars
+                             (assoc fields (.getFieldName insn pool) (peek stack))
+                             result))
           LoadInstruction (recur code
                                  (conj stack (nth vars (.getIndex insn)))
                                  vars fields result)
