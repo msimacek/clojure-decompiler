@@ -187,24 +187,44 @@
     (code->expr clazz method fields
                 (map vector (reductions + (cons 0 (map #(.getLength %) insns))) insns) [])))
 
-(defn expr->clojure [exprs]
-  (let [expr (if (vector? exprs) (last exprs) exprs)
-        args #(map expr->clojure (:args expr))] ; TODO more exprs form `do`
-    (condp = (:type expr)
-      :const (:value expr)
-      :invoke (list* (:name expr) (args))
-      :invoke-static (list* (symbol (str (:class expr) \/ (:method expr))) (args))
-      :recur (list* 'recur (args))
-      :get-field (symbol (str (:class expr) \/ (:field expr)))
-      :if (let [c (expr->clojure (:cond expr))
-                t (expr->clojure (:then expr))
-                f (expr->clojure (:else expr))]
-            (if (nil? f)
-              (list 'if c t)
-              (list 'if c t f)))
-      :arg (if-let [assign (:assign expr)]
-             (expr->clojure assign)
-             (symbol (str "arg" (:index expr)))))))
+(defn letify [exprs]
+  (let [expr (if (vector? exprs) (last exprs) exprs)]
+    (if (= (:type expr) :local)
+      {:type :let
+       :body [expr]
+       :locals [expr]}
+      (if-let [args (:args expr)]
+        (let [new-expr (assoc expr :args (map letify args))]
+          new-expr)
+        expr))))
+
+(defn render-expr [exprs fn-args]
+  ((fn render [exprs]
+     (let [expr (if (vector? exprs) (last exprs) exprs)
+           args (map render (:args expr ()))
+           local-name #(symbol (str "local" (- (:index %) (count fn-args))))] ; TODO more exprs form `do`
+       (condp = (:type expr)
+         :const (:value expr)
+         :invoke (list* (:name expr) args)
+         :invoke-static (list* (symbol (str (:class expr) \/ (:method expr))) args)
+         :recur (list* 'recur args)
+         :get-field (symbol (str (:class expr) \/ (:field expr)))
+         :let (list 'let
+                    (vec (interleave
+                           (map local-name (:locals expr))
+                           (map #(render (:initial %)) (:locals expr))))
+                    (render (:body expr)))
+         :local (local-name expr)
+         :if (let [c (render (:cond expr))
+                   t (render (:then expr))
+                   f (render (:else expr))]
+               (if (nil? f)
+                 (list 'if c t)
+                 (list 'if c t f)))
+         :arg (if-let [assign (:assign expr)]
+                (render assign)
+                (symbol (str "arg" (:index expr)))))))
+   exprs))
 
 (defn decompile-fn [clazz]
   (let [[fn-ns fn-name] (map demunge (string/split (.getClassName clazz) #"\$" 2))
@@ -212,10 +232,11 @@
         [_ fields] (method->expr clazz clinit {})
         invoke (find-method clazz "invoke") ;TODO multiple arities
         [exprs _] (method->expr clazz invoke fields)
+        argc (count (.getArgumentTypes invoke))
+        args (mapv #(symbol (str "arg" %)) (range 1 (inc argc)))
         _ (when *debug* (pprint exprs))]
-    (list 'defn (symbol fn-name)
-          (mapv #(symbol (str "arg" %)) (range 1 (inc (count (.getArgumentTypes invoke)))))
-          (expr->clojure exprs))))
+    (list 'defn (symbol fn-name) args
+          (-> exprs letify (render-expr args)))))
 
 (defn decompile-class [clazz]
   "Decompiles single class file"

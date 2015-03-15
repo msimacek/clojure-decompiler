@@ -81,3 +81,9 @@
   (defn test-fn [arg1 arg2] (if (seq arg1) (recur (first arg1) (cons arg1 arg2)) arg2)))
 ; (deftest-decompile if-primitive
 ;   (defn test-fn [arg1 arg2] (if (java.lang.Double/isNaN arg1) "NaN" arg1)))
+(deftest-decompile simple-let
+  (defn test-fn [arg1 arg2] (let [local1 (str arg1 arg1)] local1)))
+(deftest-decompile let-multiple
+  (defn test-fn [arg1 arg2] (let [local1 (str arg1 arg1)
+                                  local2 (str local1 "猫耳")]
+                              (str local2 local1 local2))))
