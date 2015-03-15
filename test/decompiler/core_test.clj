@@ -15,6 +15,7 @@
               *compile-path* (str dir)]
       (with-open [rdr (StringReader. (apply str code))]
         (Compiler/compile rdr "test_code.clj" "TEST_SOURCE")))
+    (println)
     (decompile-classes [(str dir)])))
 
 (defmacro deftest-decompile
@@ -45,3 +46,9 @@
 (deftest-decompile unconditional-recur-arg (defn test-fn [arg1] (recur arg1)))
 (deftest-decompile unconditional-recur-expr (defn test-fn [arg1] (recur (str arg1))))
 (deftest-decompile unconditional-recur-const (defn test-fn [arg1] (recur false)))
+(deftest-decompile simple-if (defn test-fn [arg1] (if arg1 1 2)))
+(deftest-decompile if-expr (defn test-fn [arg1 arg2] (if arg1 (str arg1) (str arg2))))
+(deftest-decompile if-expr-child (defn test-fn [arg1 arg2] (str (if arg1 (str arg1) (str arg2)))))
+(deftest-decompile if-expr-cond (defn test-fn [arg1 arg2] (if (str arg1) (str arg1) 0)))
+(deftest-decompile if-no-else (defn test-fn [arg1 arg2] (if arg1 (str arg1))))
+(deftest-decompile if-else-false (defn test-fn [arg1 arg2] (if arg1 (str arg1) false)))
