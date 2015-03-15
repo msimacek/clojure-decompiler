@@ -1,7 +1,8 @@
 (ns decompiler.core
   (:gen-class :main true)
   (:require [clojure.string :as string]
-            [clojure.java.io :as io])
+            [clojure.java.io :as io]
+            [clojure.pprint :refer [pprint]])
   (:import (org.apache.bcel.classfile ClassParser)
            (org.apache.bcel.generic
              ConstantPoolGen InstructionList
@@ -51,21 +52,23 @@
                 condition (peek stack)
                 stack (pop-n stack 2) ; 1 -1 + 2
                 index-op #(fn [[i _]] (% i %2))
-                [false-branch _] (code->expr clazz method fields
-                                             (take-while (index-op < target) code) stack)
-                false-branch (peek false-branch)
-                end (:target false-branch)
-                false-branch (:stack-top false-branch false-branch)
-                [true-branch _] (if end
-                                  (code->expr clazz method fields
-                                              (take-while (index-op < end)
-                                                          (drop-while (index-op < target) code))
-                                              stack))
+                [then _] (code->expr clazz method fields
+                                     (take-while (index-op < target) code) stack)
+                then (peek then)
+                end (:target then)
+                then (:stack-top then then)
+                rest-code (drop-while (index-op < target) code)
+                [else _] (code->expr clazz method fields
+                                     (if end
+                                       (take-while (index-op < end)
+                                                   rest-code)
+                                       rest-code)
+                                     stack)
                 expr {:type :if
                       :cond condition
-                      :false-branch (peek true-branch)
-                      :true-branch false-branch}]
-            (recur (drop-while (index-op < (or end target)) code)
+                      :else (peek else)
+                      :then then}]
+            (recur (if end (drop-while (index-op < end) code) ())
                    (conj stack expr)
                    vars fields
                    (conj result expr)))
@@ -194,8 +197,8 @@
       :recur (list* 'recur (args))
       :get-field (symbol (str (:class expr) \/ (:field expr)))
       :if (let [c (expr->clojure (:cond expr))
-                t (expr->clojure (:true-branch expr))
-                f (expr->clojure (:false-branch expr))]
+                t (expr->clojure (:then expr))
+                f (expr->clojure (:else expr))]
             (if (nil? f)
               (list 'if c t)
               (list 'if c t f)))
@@ -209,7 +212,7 @@
         [_ fields] (method->expr clazz clinit {})
         invoke (find-method clazz "invoke") ;TODO multiple arities
         [exprs _] (method->expr clazz invoke fields)
-        _ (when *debug* (println exprs))]
+        _ (when *debug* (pprint exprs))]
     (list 'defn (symbol fn-name)
           (mapv #(symbol (str "arg" %)) (range 1 (inc (count (.getArgumentTypes invoke)))))
           (expr->clojure exprs))))

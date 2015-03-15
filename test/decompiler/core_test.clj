@@ -75,3 +75,9 @@
   (defn test-fn [arg1 arg2] (if arg1 (str arg1))))
 (deftest-decompile if-else-false
   (defn test-fn [arg1 arg2] (if arg1 (str arg1) false)))
+(deftest-decompile if-nested
+  (defn test-fn [arg1 arg2] (if arg1 (if (str arg2) (str arg2) "1") "2")))
+(deftest-decompile conditional-recur
+  (defn test-fn [arg1 arg2] (if (seq arg1) (recur (first arg1) (cons arg1 arg2)) arg2)))
+; (deftest-decompile if-primitive
+;   (defn test-fn [arg1 arg2] (if (java.lang.Double/isNaN arg1) "NaN" arg1)))
