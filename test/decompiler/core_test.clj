@@ -5,6 +5,8 @@
   (:require [clojure.test :refer :all]
             [decompiler.core :refer :all]))
 
+(alter-var-root #'*debug* (constantly true))
+
 (defn compile-and-decompile [test-name code]
   (let [dir (Files/createTempDirectory (str "decompiler-test-" test-name)
                                        (into-array FileAttribute []))]
@@ -22,7 +24,7 @@
    (let [to-code #(if (vector? %) % [%])
          code (to-code code)
          expected-code (to-code expected-code)]
-   `(deftest ~test-name (is (= '~expected-code (compile-and-decompile ~(name test-name) '~code)))))))
+     `(deftest ~test-name (is (= '~expected-code (compile-and-decompile ~(name test-name) '~code)))))))
 
 
 (deftest-decompile return-0 (defn test-fn [] 0))
@@ -40,3 +42,6 @@
 (deftest-decompile clj-call-nested (defn test-fn [arg1 arg2] (str (str arg1 2) 1)))
 (deftest-decompile clj-call-static (defn test-fn [arg1 arg2] (java.lang.Double/compare 1.0 1.00001)))
 (deftest-decompile clj-call-static (defn test-fn [] java.lang.Double/NaN))
+(deftest-decompile unconditional-recur-arg (defn test-fn [arg1] (recur arg1)))
+(deftest-decompile unconditional-recur-expr (defn test-fn [arg1] (recur (str arg1))))
+(deftest-decompile unconditional-recur-const (defn test-fn [arg1] (recur false)))

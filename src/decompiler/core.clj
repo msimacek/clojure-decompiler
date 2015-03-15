@@ -5,9 +5,10 @@
   (:import (org.apache.bcel.classfile ClassParser)
            (org.apache.bcel.generic
              ConstantPoolGen InstructionList
-             LoadInstruction StoreInstruction ConstantPushInstruction
+             LoadInstruction StoreInstruction ConstantPushInstruction GotoInstruction
              ACONST_NULL ARETURN DUP LDC LDC_W LDC2_W INVOKESTATIC PUTSTATIC
              GETSTATIC INVOKEVIRTUAL INVOKEINTERFACE)))
+(def ^:dynamic *debug* false)
 
 (defn pop-n [stack n] (let [c (count stack)] (subvec stack 0 (- c n))))
 (defn peek-n [stack n] (let [c (count stack)] (subvec stack (- c n) c)))
@@ -28,18 +29,24 @@
 (defn insn-field [insn pool]
   (str (.getClassName insn pool) \/ (.getFieldName insn pool)))
 
-(defn code->expr [clazz method fields]
-  (let [code (get-instructions method)
-        class-name (.getClassName clazz)
+(defn code->expr [clazz method fields indexed-code end-cond end-fn]
+  (let [class-name (.getClassName clazz)
+        arg-count (inc (count (.getArgumentTypes method)))
         pool (ConstantPoolGen. (.getConstantPool clazz))]
-    (loop [[insn & code] code
+    (loop [[[index insn] & code] indexed-code
            stack []
-           vars (mapv (fn [n] {:type :arg :index n})
-                      (range (inc (count (.getArgumentTypes method)))))
+           vars (mapv (fn [n] {:type :arg :index n}) (range arg-count))
            fields fields
            result []]
-      (if insn
+      (cond
+        (end-cond index insn)
+        [(conj result (end-fn index insn)) fields]
+        insn
         (condp instance? insn
+          ; IFEQ (let [cmp (peek stack)
+          ;            false-branch (code->expr (take (- insn-index index) code))
+          ;            end (peek false-branch
+          ;            true-branch (code->expr (drop (- insn-index index) code))
           GETSTATIC (recur code
                            (conj stack (cond
                                          (= (.getClassName insn pool) class-name)
@@ -61,9 +68,19 @@
           LoadInstruction (recur code
                                  (conj stack (nth vars (.getIndex insn)))
                                  vars fields result)
-          StoreInstruction (recur code (pop stack)
-                                  (assoc vars (.getIndex insn) (peek stack))
-                                  fields result)
+          StoreInstruction (let [index (.getIndex insn)
+                                 vars (if-let [local (nth vars index nil)]
+                                        (if (#{:local :arg} (:type local))
+                                          (assoc vars index (assoc local :assign (peek stack))))
+                                        (conj vars {:type :local
+                                                    :initial (peek stack)
+                                                    :index index}))]
+                             (recur code (pop stack) vars fields result))
+          GotoInstruction (let [expr (cond
+                                       (== (.getIndex insn) (- (- index (.getLength insn))))
+                                       {:type :recur
+                                        :args (subvec vars 1 arg-count)})]
+                            [(conj result expr) fields])
           DUP (recur code (conj stack (peek stack)) vars fields result)
           LDC (recur code
                      (conj stack {:type :const :value (.getValue insn pool)})
@@ -119,7 +136,14 @@
                             (recur code (pop stack) vars fields result)) ; TODO handle interop
           ARETURN [(conj result (peek stack)) fields]
           (recur code stack vars fields result))
+        :default
         [result fields]))))
+
+(defn method->expr [clazz method fields]
+  (let [insns (get-instructions method)]
+    (code->expr clazz method fields
+                (map vector (reductions + (map #(.getLength %) insns)) insns)
+                (constantly false) nil)))
 
 (defn expr->clojure [exprs]
   (let [expr (if (vector? exprs) (last exprs) exprs)
@@ -128,15 +152,19 @@
       :const (:value expr)
       :invoke (list* (:name expr) (args))
       :invoke-static (list* (symbol (str (:class expr) \/ (:method expr))) (args))
+      :recur (list* 'recur (args))
       :get-field (symbol (str (:class expr) \/ (:field expr)))
-      :arg (symbol (str "arg" (:index expr))))))
+      :arg (if-let [assign (:assign expr)]
+             (expr->clojure assign)
+             (symbol (str "arg" (:index expr)))))))
 
 (defn decompile-fn [clazz]
   (let [[fn-ns fn-name] (map demunge (string/split (.getClassName clazz) #"\$" 2))
         clinit (find-method clazz "<clinit>")
-        [_ fields] (code->expr clazz clinit {})
+        [_ fields] (method->expr clazz clinit {})
         invoke (find-method clazz "invoke") ;TODO multiple arities
-        [exprs _] (code->expr clazz invoke fields)]
+        [exprs _] (method->expr clazz invoke fields)
+        _ (when *debug* (println exprs))]
     (list 'defn (symbol fn-name)
           (mapv #(symbol (str "arg" %)) (range 1 (inc (count (.getArgumentTypes invoke)))))
           (expr->clojure exprs))))
