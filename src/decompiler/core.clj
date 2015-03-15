@@ -76,10 +76,11 @@
                                                     :initial (peek stack)
                                                     :index index}))]
                              (recur code (pop stack) vars fields result))
-          GotoInstruction (let [expr (cond
-                                       (== (.getIndex insn) (- (- index (.getLength insn))))
+          GotoInstruction (let [expr (if (== (.getIndex insn) (- index))
                                        {:type :recur
-                                        :args (subvec vars 1 arg-count)})]
+                                        :args (subvec vars 1 arg-count)}
+                                       {:type :goto
+                                        :target (+ index (.getIndex insn))})]
                             [(conj result expr) fields])
           DUP (recur code (conj stack (peek stack)) vars fields result)
           LDC (recur code
@@ -142,8 +143,7 @@
 (defn method->expr [clazz method fields]
   (let [insns (get-instructions method)]
     (code->expr clazz method fields
-                (map vector (reductions + (map #(.getLength %) insns)) insns)
-                (constantly false) nil)))
+                (map vector (reductions + (cons 0 (map #(.getLength %) insns))) insns))))
 
 (defn expr->clojure [exprs]
   (let [expr (if (vector? exprs) (last exprs) exprs)
