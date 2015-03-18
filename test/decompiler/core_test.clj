@@ -102,3 +102,8 @@
   (defn test-fn [arg1 arg2]
     (loop [local1 (concat arg1 arg2)]
       (recur (first local1)))))
+(deftest-decompile loop-more-locals
+  (defn test-fn [arg1 arg2]
+    (loop [local1 (concat arg1 arg2)
+           local2 (str local1)]
+      (recur (first local1) local2))))

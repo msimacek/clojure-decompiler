@@ -123,18 +123,20 @@
       ; will form let or loop
       (let [inner-context (process-insns new-context)
             inner-expr (:return inner-context)
-            inner-is-let (= (:type inner-expr) :let)
-            locals (if inner-is-let
+            inner-is-binding (#{:let :loop} (:type inner-expr))
+            locals (if inner-is-binding
                      (cons local (:locals inner-expr))
                      (list local))
-            body (if inner-is-let (:body inner-expr) (:return inner-context))
-            is-loop (= (:target body) (+ insn-index (.getLength insn)))
-            body (if (and is-loop (= (:type body) :recur))
+            body (if inner-is-binding (:body inner-expr) (:return inner-context))
+            binding-type (or (and inner-is-binding (:type inner-expr))
+                             (if (= (:target body) (+ insn-index (.getLength insn)))
+                               :loop :let))
+            body (if (and (= binding-type :loop) (= (:type body) :recur))
                    (assoc body
                           :args (filter #((set (map :index locals)) (:index %))
                                         (:vars body)))
                    body)
-            expr {:type (if is-loop :loop :let)
+            expr {:type binding-type
                   :locals locals
                   :body body}]
         (assoc inner-context
