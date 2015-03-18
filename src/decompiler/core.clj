@@ -103,7 +103,7 @@
            :fields (assoc fields (.getFieldName insn pool) (peek stack)))))
 
 (defmethod process-insn StoreInstruction
-  [_ insn {:keys [stack vars statements] :as context}]
+  [insn-index insn {:keys [stack vars statements] :as context}]
   (let [index (.getIndex insn)
         existing (nth vars index nil)
         local (if (#{:local :arg} (:type existing))
@@ -128,7 +128,13 @@
                      (cons local (:locals inner-expr))
                      (list local))
             body (if inner-is-let (:body inner-expr) (:return inner-context))
-            expr {:type :let
+            is-loop (= (:target body) (+ insn-index (.getLength insn)))
+            body (if (and is-loop (= (:type body) :recur))
+                   (assoc body
+                          :args (filter #((set (map :index locals)) (:index %))
+                                        (:vars body)))
+                   body)
+            expr {:type (if is-loop :loop :let)
                   :locals locals
                   :body body}]
         (assoc inner-context
@@ -137,10 +143,13 @@
 
 (defmethod process-insn GotoInstruction
   [index insn {:keys [stack vars statements arg-count] :as context}]
-  (if (== (.getIndex insn) (- index))
+  (if (neg? (.getIndex insn))
     (assoc context
            :code nil
            :return {:type :recur
+                    :target (+ index (.getIndex insn))
+                    :vars vars
+                    ; :args will be overriden if it's a loop
                     :args (subvec vars 1 arg-count)})
     (assoc context
            :code nil
@@ -232,19 +241,21 @@
   ((fn render [exprs]
      (let [expr (if (vector? exprs) (last exprs) exprs)
            args (map render (:args expr ()))
-           local-name #(symbol (str "local" (- (:index %) (count fn-args))))] ; TODO more exprs form `do`
+           local-name #(symbol (str "local" (- (:index %) (count fn-args))))
+           render-binding (fn [sym expr]
+                            (list sym (vec (interleave
+                                             (map local-name (:locals expr))
+                                             (map #(render (:initial %)) (:locals expr))))
+                                  (render (:body expr))))] ; TODO more exprs form `do`
        (condp = (:type expr)
          :const (:value expr)
          :invoke (list* (:name expr) args)
          :invoke-static (list* (symbol (str (:class expr) \/ (:method expr))) args)
          :recur (list* 'recur args)
          :get-field (symbol (str (:class expr) \/ (:field expr)))
-         :let (list 'let
-                    (vec (interleave
-                           (map local-name (:locals expr))
-                           (map #(render (:initial %)) (:locals expr))))
-                    (render (:body expr)))
-         :local (local-name expr)
+         :let (render-binding 'let expr)
+         :loop (render-binding 'loop expr)
+         :local (if-let [assign (:assign expr)] (render assign) (local-name expr))
          :if (let [c (render (:cond expr))
                    t (render (:then expr))
                    f (render (:else expr))]

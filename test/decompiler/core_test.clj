@@ -98,3 +98,7 @@
         ; this is technically correct
         (let [local2 (first local1)]
           (str local2 local1))))))
+(deftest-decompile simple-loop
+  (defn test-fn [arg1 arg2]
+    (loop [local1 (concat arg1 arg2)]
+      (recur (first local1)))))
