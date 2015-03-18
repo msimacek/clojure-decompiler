@@ -103,16 +103,37 @@
            :fields (assoc fields (.getFieldName insn pool) (peek stack)))))
 
 (defmethod process-insn StoreInstruction
-  [_ insn {:keys [stack vars] :as context}]
-  (let [index (.getIndex insn)]
-    (assoc context
-           :stack (pop stack)
-           :vars (if-let [local (nth vars index nil)]
-                       (if (#{:local :arg} (:type local))
-                         (assoc vars index (assoc local :assign (peek stack))))
-                       (conj vars {:type :local
-                                   :initial (peek stack)
-                                   :index index})))))
+  [_ insn {:keys [stack vars result] :as context}]
+  (let [index (.getIndex insn)
+        existing (nth vars index nil)
+        local (if (#{:local :arg} (:type existing))
+                (assoc existing :assign (peek stack))
+                {:type :local
+                 :initial (peek stack)
+                 :index index})
+        vars (if existing
+               (assoc vars index local)
+               (conj vars local))
+        new-context (assoc context
+                           :stack (pop stack)
+                           :vars (assoc vars index local))]
+    (if existing
+      ; will recur or do nothing
+      new-context
+      ; will form let or loop
+      (let [inner-context (process-insns new-context)
+            inner-expr (peek (:result inner-context))
+            inner-is-let (= (:type inner-expr) :let)
+            locals (if inner-is-let
+                     (cons local (:locals inner-expr))
+                     (list local))
+            body (if inner-is-let (:body inner-expr) (:result inner-context))
+            expr {:type :let
+                  :locals locals
+                  :body body}]
+        (assoc inner-context
+               :code nil ; it's nil already, just making it obvious
+               :result (conj result expr)))))) ; we wrapped the result into let
 
 (defmethod process-insn GotoInstruction
   [index insn {:keys [stack vars result arg-count] :as context}]
@@ -209,17 +230,6 @@
                        context)]
     (process-insns context)))
 
-(defn letify [exprs]
-  (let [expr (if (vector? exprs) (last exprs) exprs)]
-    (if (= (:type expr) :local)
-      {:type :let
-       :body [expr]
-       :locals [expr]}
-      (if-let [args (:args expr)]
-        (let [new-expr (assoc expr :args (map letify args))]
-          new-expr)
-        expr))))
-
 (defn render-expr [exprs fn-args]
   ((fn render [exprs]
      (let [expr (if (vector? exprs) (last exprs) exprs)
@@ -258,7 +268,7 @@
         args (mapv #(symbol (str "arg" %)) (range 1 (inc argc)))
         _ (when *debug* (pprint exprs))]
     (list 'defn (symbol fn-name) args
-          (-> exprs letify (render-expr args)))))
+          (render-expr exprs args))))
 
 (defn decompile-class [clazz]
   "Decompiles single class file"
