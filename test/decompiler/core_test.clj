@@ -87,3 +87,14 @@
   (defn test-fn [arg1 arg2] (let [local1 (str arg1 arg1)
                                   local2 (str local1 "猫耳")]
                               (str local2 local1 local2))))
+(deftest-decompile let-nested
+  (defn test-fn [arg1 arg2]
+    (let [local1 (first arg1)]
+      (if (seq arg2)
+        (let [local2 (str arg1 arg1)
+              local3 (str local1 "猫耳")]
+          (recur (conj local3 local1) (next local2)))
+        ; it would be better if it generated at least unique local names, but
+        ; this is technically correct
+        (let [local2 (first local1)]
+          (str local2 local1))))))
