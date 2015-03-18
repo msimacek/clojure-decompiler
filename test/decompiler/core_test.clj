@@ -45,6 +45,14 @@
   (defn test-fn [] true))
 (deftest-decompile return-false
   (defn test-fn [] false))
+(deftest-decompile return-empty-list
+  (defn test-fn [] ()))
+(deftest-decompile return-empty-vector
+  (defn test-fn [] []))
+(deftest-decompile return-empty-map
+  (defn test-fn [] {}))
+(deftest-decompile return-empty-set
+  (defn test-fn [] #{}))
 (deftest-decompile simple-clj-call
   (defn test-fn [] (println "Hello")))
 (deftest-decompile clj-call-param

@@ -83,13 +83,18 @@
 (defmethod process-insn GETSTATIC
   [_ insn {:keys [clazz stack pool fields] :as context}]
   (let [class-name (.getClassName clazz)
+        const-map {"java.lang.Boolean/TRUE" true
+                   "java.lang.Boolean/FALSE" false
+                   "clojure.lang.PersistentList/EMPTY" ()
+                   "clojure.lang.PersistentVector/EMPTY" []
+                   "clojure.lang.PersistentArrayMap/EMPTY" {}
+                   "clojure.lang.PersistentHashSet/EMPTY" #{}}
+        field (insn-field insn pool)
         expr (cond
                (= (.getClassName insn pool) class-name)
                (fields (.getFieldName insn pool))
-               (= (insn-field insn pool) "java.lang.Boolean/TRUE")
-               {:type :const :value true}
-               (= (insn-field insn pool) "java.lang.Boolean/FALSE")
-               {:type :const :value false}
+               (contains? const-map field)
+               {:type :const :value (const-map field)}
                :default {:type :get-field
                          :class (.getClassName insn pool)
                          :field (.getFieldName insn pool)})]
