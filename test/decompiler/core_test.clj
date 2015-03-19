@@ -5,7 +5,7 @@
   (:require [clojure.test :refer :all]
             [decompiler.core :refer :all]))
 
-(alter-var-root #'*debug* (constantly true))
+; (alter-var-root #'*debug* (constantly true))
 
 (defn compile-and-decompile [test-name code]
   (let [dir (Files/createTempDirectory (str "decompiler-test-" test-name)
@@ -15,8 +15,20 @@
               *compile-path* (str dir)]
       (with-open [rdr (StringReader. (apply str code))]
         (Compiler/compile rdr "test_code.clj" "TEST_SOURCE")))
-    (println)
-    (decompile-classes [(str dir)])))
+    (if *debug* (println))
+    (vec (decompile-classes [(str dir)]))))
+
+(defn typed-equals [x y]
+  (and (or (= (class x) (class y))
+           (and (seq? x) (seq? y))
+           (and (set? x) (set? y))
+           (and (map? x) (map? y)))
+       (if (sequential? x)
+         (and
+           (= (count x) (count y))
+           (every? true? (map typed-equals x y)))
+         ; sets and maps are not deeply type-compared
+         (= x y))))
 
 (defmacro deftest-decompile
   ([test-name code]
@@ -25,7 +37,9 @@
    (let [to-code #(if (vector? %) % [%])
          code (to-code code)
          expected-code (to-code expected-code)]
-     `(deftest ~test-name (is (= '~expected-code (compile-and-decompile ~(name test-name) '~code)))))))
+     `(deftest ~test-name
+        (is (typed-equals '~expected-code
+                          (compile-and-decompile ~(name test-name) '~code)))))))
 
 (deftest-decompile return-0
   (defn test-fn [] 0))
