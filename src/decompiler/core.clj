@@ -10,7 +10,7 @@
              GotoInstruction IfInstruction
              ACONST_NULL ARETURN RETURN DUP LDC LDC_W LDC2_W INVOKESTATIC
              PUTSTATIC GETSTATIC INVOKEVIRTUAL INVOKEINTERFACE IFNULL
-             IF_ACMPEQ ANEWARRAY AASTORE)))
+             IFEQ IF_ACMPEQ ANEWARRAY AASTORE)))
 (def ^:dynamic *debug* false)
 
 (defn pop-n [stack n] (let [c (count stack)] (subvec stack 0 (- c n))))
@@ -52,16 +52,9 @@
 
 (defmethod process-insn :default [_ _ context] context)
 
-(defmethod process-insn IFNULL
-  [index insn {:keys [code stack statements pool] :as context}]
+(defn process-if
+  [index insn condition {:keys [code stack statements pool] :as context}]
   (let [target (+ index (.getIndex insn))
-        [[_ get-false-insn] & code] code
-        _ (assert (instance? GETSTATIC get-false-insn))
-        _ (assert (= (insn-field get-false-insn pool) "java.lang.Boolean/FALSE"))
-        [[_ acmpeq-insn] & code] code
-        _ (assert (instance? IF_ACMPEQ acmpeq-insn))
-        condition (peek stack)
-        stack (pop-n stack 2) ; 1 -1 + 2
         index< #(fn [[i _]] (< i %))
         then (process-insns (assoc context
                                    :code (take-while (index< target) code)))
@@ -79,6 +72,21 @@
            :code (if end (drop-while (index< end) code) ())
            :stack (conj stack expr)
            :statements (conj statements expr))))
+
+
+(defmethod process-insn IFEQ
+  [index insn {:keys [stack] :as context}]
+  (process-if index insn (peek stack) (assoc context :stack (pop stack))))
+
+(defmethod process-insn IFNULL
+  [index insn {:keys [code stack statements pool] :as context}]
+  (let [[[_ get-false-insn] & code] code
+        _ (assert (instance? GETSTATIC get-false-insn))
+        _ (assert (= (insn-field get-false-insn pool) "java.lang.Boolean/FALSE"))
+        [[_ acmpeq-insn] & code] code
+        _ (assert (instance? IF_ACMPEQ acmpeq-insn))]
+    (process-if index insn (peek stack)
+                (assoc context :stack (pop-n stack 2))))) ; 1 -1 + 2
 
 (defmethod process-insn LoadInstruction
   [_ insn {:keys [stack vars] :as context}]
