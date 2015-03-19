@@ -9,12 +9,17 @@
              LoadInstruction StoreInstruction ConstantPushInstruction
              GotoInstruction IfInstruction
              ACONST_NULL ARETURN RETURN DUP LDC LDC_W LDC2_W INVOKESTATIC
-             PUTSTATIC GETSTATIC INVOKEVIRTUAL INVOKEINTERFACE IFNULL IF_ACMPEQ)))
+             PUTSTATIC GETSTATIC INVOKEVIRTUAL INVOKEINTERFACE IFNULL
+             IF_ACMPEQ ANEWARRAY AASTORE)))
 (def ^:dynamic *debug* false)
 
 (defn pop-n [stack n] (let [c (count stack)] (subvec stack 0 (- c n))))
 (defn peek-n [stack n] (let [c (count stack)] (subvec stack (- c n) c)))
 (defn peek-at [stack n] (let [c (count stack)] (nth stack (- c n 1))))
+
+(defn assoc* [coll n item] (if (contains? coll n)
+                             (assoc coll n item)
+                             (recur (conj coll nil) n item)))
 
 (defn find-method [clazz method]
   (first (filter #(= (.getName %) method) (.getMethods clazz))))
@@ -118,7 +123,7 @@
                  :index index})
         vars (if existing
                (assoc vars index local)
-               (conj vars local))
+               (assoc* vars index local))
         new-context (assoc context
                            :stack (pop stack)
                            :vars (assoc vars index local))]
@@ -182,6 +187,20 @@
   [_ insn {:keys [stack] :as context}]
   (assoc context :stack (conj stack {:type :const :value nil})))
 
+(defmethod process-insn ANEWARRAY
+  [_ insn {:keys [stack] :as context}]
+  (assoc context
+         :stack (conj (pop stack) {:type :array :values (atom [])})))
+
+(defmethod process-insn AASTORE
+  [_ insn {:keys [stack] :as context}]
+  (let [array (peek-at stack 2)
+        idx (:value (peek-at stack 1))
+        item (peek stack)]
+    (swap! (:values array) #(assoc* % idx item))
+    (assoc context
+           :stack (conj (pop-n stack 3) array))))
+
 (defmethod process-insn INVOKESTATIC
   [_ insn {:keys [stack pool statements] :as context}]
   (let [argc (count (.getArgumentTypes insn pool))
@@ -190,6 +209,18 @@
                {:type :var
                 :ns (demunge (:value (peek-at stack 1)))
                 :name (demunge (:value (peek stack)))}
+               "clojure.lang.RT/vector"
+               {:type :const-coll
+                :ctor vec
+                :value @(:values (peek stack))}
+               "clojure.lang.RT/set"
+               {:type :const-coll
+                :ctor set
+                :value @(:values (peek stack))}
+               "clojure.lang.RT/mapUniqueKeys"
+               {:type :const-coll
+                :ctor #(apply hash-map %)
+                :value @(:values (peek stack))}
                "java.lang.Long/valueOf"
                (peek stack)
                "java.lang.Double/valueOf"
@@ -197,6 +228,12 @@
                "java.lang.Integer/valueOf"
                ;may appear when boxing int return from interop
                (peek stack)
+               "java.lang.Character/valueOf"
+               {:type :const
+                :value (-> stack peek :value char)}
+               "clojure.lang.RT/keyword"
+               {:type :const
+                :value (-> stack peek :value keyword)}
                "clojure.lang.RT/readString"
                {:type :const
                 :value (clojure.lang.RT/readString (:value (peek stack)))}
@@ -256,6 +293,7 @@
                                   (render (:body expr))))] ; TODO more exprs form `do`
        (condp = (:type expr)
          :const (:value expr)
+         :const-coll ((:ctor expr) (map render (:value expr)))
          :invoke (list* (:name expr) args)
          :invoke-static (list* (symbol (str (:class expr) \/ (:method expr))) args)
          :recur (list* 'recur args)

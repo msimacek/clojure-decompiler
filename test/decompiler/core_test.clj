@@ -45,6 +45,10 @@
   (defn test-fn [] true))
 (deftest-decompile return-false
   (defn test-fn [] false))
+(deftest-decompile return-char
+  (defn test-fn [] \a))
+(deftest-decompile return-keyword
+  (defn test-fn [] :lol))
 (deftest-decompile return-empty-list
   (defn test-fn [] ()))
 (deftest-decompile return-empty-vector
@@ -53,6 +57,15 @@
   (defn test-fn [] {}))
 (deftest-decompile return-empty-set
   (defn test-fn [] #{}))
+(deftest-decompile return-vector
+  (defn test-fn [] [1 2 (str 3)]))
+; list literals have metadata!
+; (deftest-decompile return-list
+;   (defn test-fn [] '(1 2 3)))
+(deftest-decompile return-set
+  (defn test-fn [] #{1 2 (str 3)}))
+(deftest-decompile return-map
+  (defn test-fn [] {:live 4 :ever (str \!)}))
 (deftest-decompile simple-clj-call
   (defn test-fn [] (println "Hello")))
 (deftest-decompile clj-call-param
