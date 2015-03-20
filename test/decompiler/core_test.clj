@@ -142,3 +142,20 @@
     (loop [local1 (concat arg1 arg2)
            local2 (str local1)]
       (recur (first local1) local2))))
+(deftest-decompile loop-condition
+  (defn test-fn [arg1 arg2]
+    (loop [local1 (concat arg1 arg2)
+           local2 []]
+      (if local1
+        (recur (first local1) (cons local1 local2))
+        local2))))
+; loops in expressions are rewrapped into anonymous functions
+; (deftest-decompile nested-loop
+;   (defn test-fn [arg1 arg2]
+;     (loop [local1 (concat arg1 arg2)
+;            local2 (str local1)]
+;       (recur (loop [local3 (first arg2)
+;                     local4 []]
+;                (if local3
+;                  (recur nil (next local3))
+;                  local4)) local1))))

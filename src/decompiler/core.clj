@@ -120,6 +120,22 @@
            :stack (pop stack)
            :fields (assoc fields (.getFieldName insn pool) (peek stack)))))
 
+(defn get-expr [e ]
+  (condp = (:type e)
+    :if (or (get-expr (:then e)) (get-expr (:else e)))
+    :let (get-expr (:body e))
+    :loop (get-expr (:body e))
+    e))
+
+(defn update-expr [e f]
+  (condp = (:type e)
+    :if (assoc e
+               :then (update-expr (:then e) f)
+               :else (update-expr (:else e) f))
+    :let (assoc e :body (update-expr (:body e) f))
+    :loop (assoc e :body (update-expr (:body e) f))
+    (f e)))
+
 (defmethod process-insn StoreInstruction
   [insn-index insn {:keys [stack vars statements] :as context}]
   (let [index (.getIndex insn)
@@ -141,22 +157,34 @@
       ; will form let or loop
       (let [inner-context (process-insns new-context)
             inner-expr (:return inner-context)
+            target-index (+ insn-index (.getLength insn))
+            recurs (seq ((fn find-recur [e]
+                           (condp = (:type e)
+                             :if (concat (find-recur (:then e))
+                                         (find-recur (:else e)))
+                             :let (find-recur (:body e))
+                             :loop (find-recur (:body e))
+                             :invoke (mapcat find-recur (:args e))
+                             :recur (if (= (:target e) target-index) [e])
+                             nil)) inner-expr))
             inner-is-binding (#{:let :loop} (:type inner-expr))
-            locals (if inner-is-binding
+            squash (and (not recurs) inner-is-binding)
+            binding-type (if squash (:type inner-expr) (if recurs :loop :let))
+            locals (if squash
                      (cons local (:locals inner-expr))
                      (list local))
-            body (if inner-is-binding (:body inner-expr) (:return inner-context))
-            binding-type (or (and inner-is-binding (:type inner-expr))
-                             (if (= (:target body) (+ insn-index (.getLength insn)))
-                               :loop :let))
-            body (if (and (= binding-type :loop) (= (:type body) :recur))
-                   (assoc body
-                          :args (filter #((set (map :index locals)) (:index %))
-                                        (:vars body)))
-                   body)
+            body (if squash (:body inner-expr) inner-expr)
+            recurs (if squash (:recurs inner-expr) recurs)
             expr {:type binding-type
                   :locals locals
-                  :body body}]
+                  :body body
+                  :recurs recurs}]
+        (dorun (map (fn [e]
+                      (swap! (:args e) (constantly
+                                         (filter
+                                           #((set (map :index locals)) (:index %))
+                                           (:vars e)))))
+                    recurs))
         (assoc inner-context
                :code nil ; it's nil already, just making it obvious
                :return expr))))) ; we wrapped the return into let
@@ -170,7 +198,7 @@
                     :target (+ index (.getIndex insn))
                     :vars vars
                     ; :args will be overriden if it's a loop
-                    :args (subvec vars 1 arg-count)})
+                    :args (atom (subvec vars 1 arg-count))})
     (assoc context
            :code nil
            :goto-target (+ index (.getIndex insn)))))
@@ -304,7 +332,7 @@
          :const-coll ((:ctor expr) (map render (:value expr)))
          :invoke (list* (:name expr) args)
          :invoke-static (list* (symbol (str (:class expr) \/ (:method expr))) args)
-         :recur (list* 'recur args)
+         :recur (list* 'recur (map render @(:args expr)))
          :get-field (symbol (str (:class expr) \/ (:field expr)))
          :let (render-binding 'let expr)
          :loop (render-binding 'loop expr)
