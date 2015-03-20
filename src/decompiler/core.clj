@@ -64,11 +64,16 @@
                                    :code (if end
                                            (take-while (index< end) rest-code)
                                            rest-code)))
-        expr {:type :if
-              :cond condition
-              :else (:return else)
-              :then (:return then)}]
-    (assoc context
+        expr (if (and (true? (-> then :return :value))
+                      (false? (-> else :return :value)))
+               ; not a real if, just boolean boxing
+               condition
+               ; real if
+               {:type :if
+                :cond condition
+                :else (:return else)
+                :then (:return then)})]
+      (assoc context
            :code (if end (drop-while (index< end) code) ())
            :stack (conj stack expr)
            :statements (conj statements expr))))
