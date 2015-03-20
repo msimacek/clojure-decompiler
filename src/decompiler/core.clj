@@ -245,37 +245,95 @@
 (defmethod process-insn INVOKESTATIC
   [_ insn {:keys [stack pool statements] :as context}]
   (let [argc (count (.getArgumentTypes insn pool))
-        expr (condp = (insn-method insn pool)
-               "clojure.lang.RT/var"
+        inline-fns {"clojure.lang.Numbers/add" '+
+                    "clojure.lang.Numbers/unchecked_add" '+
+                    "clojure.lang.Numbers/addP" '+'
+                    "clojure.lang.Numbers/minus" '-
+                    "clojure.lang.Numbers/unchecked_minus" '-
+                    "clojure.lang.Numbers/minusP" '-'
+                    "clojure.lang.Numbers/multiply" '*
+                    "clojure.lang.Numbers/unchecked_multiply" '*
+                    "clojure.lang.Numbers/multiplyP" '*'
+                    "clojure.lang.Numbers/divide" '/
+                    "clojure.lang.Numbers/gt" '>
+                    "clojure.lang.Numbers/lt" '<
+                    "clojure.lang.Numbers/equiv" '==
+                    "clojure.lang.Numbers/gte" '>=
+                    "clojure.lang.Numbers/lte" '<=
+                    "clojure.lang.Numbers/isZero" 'zero?
+                    "clojure.lang.Numbers/inc" 'inc
+                    "clojure.lang.Numbers/unchecked_inc" 'inc
+                    "clojure.lang.Numbers/incP" 'inc'
+                    "clojure.lang.Numbers/dec" 'dec
+                    "clojure.lang.Numbers/unchecked_dec" 'dec
+                    "clojure.lang.Numbers/decP" 'dec'
+                    "clojure.lang.Numbers/max" 'max
+                    "clojure.lang.Numbers/min" 'min
+                    "clojure.lang.Numbers/isPos" 'pos?
+                    "clojure.lang.Numbers/isNeg" 'neg?
+                    "clojure.lang.Numbers/remainder" 'rem
+                    "clojure.lang.Numbers/quotient" 'quot
+                    "clojure.lang.Numbers/not" 'bit-not
+                    "clojure.lang.Numbers/and" 'bit-and
+                    "clojure.lang.Numbers/or" 'bit-or
+                    "clojure.lang.Numbers/xor" 'bit-xor
+                    "clojure.lang.Numbers/andNot" 'bit-and-not
+                    "clojure.lang.Numbers/clearBit" 'bit-clear
+                    "clojure.lang.Numbers/setBit" 'bit-set
+                    "clojure.lang.Numbers/flipBit" 'bit-flip
+                    "clojure.lang.Numbers/testBit" 'bit-test
+                    "clojure.lang.Numbers/shiftLeft" 'bit-shift-left
+                    "clojure.lang.Numbers/shiftRight" 'bit-shift-right
+                    "clojure.lang.Numbers/unsignedShiftRight" 'unsigned-bit-shift-right
+                    "clojure.lang.Numbers" 'num
+                    "clojure.lang.Util/equiv" '=
+                    "clojure.lang.Util/compare" 'compare
+                    "clojure.lang.RT/intCast" 'int
+                    "clojure.lang.RT/uncheckedIntCast" 'int
+                    "clojure.lang.RT/count" 'count
+                    "clojure.lang.RT/nth" 'nth
+                    "clojure.lang.RT/get" 'get
+                    "clojure.lang.RT/isReduced" 'reduced?
+                    }
+        identical?-variants {true 'true?
+                             false 'false?
+                             nil 'nil?}
+        coll-consts {"clojure.lang.RT/vector" vec
+                     "clojure.lang.RT/set" set
+                     "clojure.lang.RT/mapUniqueKeys" #(apply hash-map %)}
+        no-ops #{"java.lang.Long/valueOf"
+                 "java.lang.Double/valueOf"
+                 "java.lang.Integer/valueOf"}
+        method-name (insn-method insn pool)
+        expr (condp #(%1 %2) method-name
+               #{"clojure.lang.RT/var"}
                {:type :var
                 :ns (demunge (:value (peek-at stack 1)))
                 :name (demunge (:value (peek stack)))}
-               "clojure.lang.RT/vector"
+               coll-consts
                {:type :const-coll
-                :ctor vec
+                :ctor (coll-consts method-name)
                 :value @(:values (peek stack))}
-               "clojure.lang.RT/set"
-               {:type :const-coll
-                :ctor set
-                :value @(:values (peek stack))}
-               "clojure.lang.RT/mapUniqueKeys"
-               {:type :const-coll
-                :ctor #(apply hash-map %)
-                :value @(:values (peek stack))}
-               "java.lang.Long/valueOf"
+               inline-fns
+               {:type :invoke
+                :ns 'clojure.core
+                :name (inline-fns method-name)
+                :args (peek-n stack argc)}
+               #{"clojure.lang.Util/identical"}
+               (let [variant (-> stack peek (:value :not-there) identical?-variants)]
+                 {:type :invoke
+                  :ns 'clojure.core
+                  :name (or variant 'identical?)
+                  :args (if variant [(peek-at stack 1)] (peek-n stack argc))})
+               no-ops
                (peek stack)
-               "java.lang.Double/valueOf"
-               (peek stack)
-               "java.lang.Integer/valueOf"
-               ;may appear when boxing int return from interop
-               (peek stack)
-               "java.lang.Character/valueOf"
+               #{"java.lang.Character/valueOf"}
                {:type :const
                 :value (-> stack peek :value char)}
-               "clojure.lang.RT/keyword"
+               #{"clojure.lang.RT/keyword"}
                {:type :const
                 :value (-> stack peek :value keyword)}
-               "clojure.lang.RT/readString"
+               #{"clojure.lang.RT/readString"}
                {:type :const
                 :value (clojure.lang.RT/readString (:value (peek stack)))}
                {:type :invoke-static

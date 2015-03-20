@@ -80,6 +80,7 @@
   (defn test-fn [] #{1 2 (str 3)}))
 (deftest-decompile return-map
   (defn test-fn [] {:live 4 :ever (str \!)}))
+
 (deftest-decompile simple-clj-call
   (defn test-fn [] (println "Hello")))
 (deftest-decompile clj-call-param
@@ -92,6 +93,29 @@
   (defn test-fn [arg1 arg2] (java.lang.Double/compare 1.0 1.00001)))
 (deftest-decompile clj-call-static
   (defn test-fn [] java.lang.Double/NaN))
+
+; test that inlined functions are converted to their clojure form
+(defmacro deftest-inline [sym arity]
+  (let [argsyms (map #(symbol (str "arg" %)) (range 1 (inc arity)))]
+    `(deftest-decompile ~(-> (str "inline-" sym \- arity) munge symbol)
+       ~(list 'defn 'test-fn (vec argsyms) (cons sym argsyms)))))
+(defmacro gen-inline-tests [arity syms]
+  `(do
+     ~@(loop [[sym & syms] syms
+              code nil]
+         (if sym
+           (recur syms (conj code `(deftest-inline ~sym ~arity)))
+           code))))
+
+; todo: unchecked casts, uncehcked ops, arrays, array ops, prim casts, array casts
+(gen-inline-tests 1 [- nil? zero? count int inc inc' dec dec' pos? neg? bit-not
+                     reduced?])
+(gen-inline-tests 2 [+ +' - -' * *' / > < >= <= = == identical? compare nth max
+                     min rem quot bit-and bit-or bit-xor bit-and-not bit-clear
+                     bit-set bit-flip bit-test bit-shift-left bit-shift-right
+                     unsigned-bit-shift-right get])
+(gen-inline-tests 3 [get])
+
 (deftest-decompile unconditional-recur-arg
   (defn test-fn [arg1] (recur arg1)))
 (deftest-decompile unconditional-recur-expr
@@ -116,6 +140,8 @@
   (defn test-fn [arg1 arg2] (if (seq arg1) (recur (first arg1) (cons arg1 arg2)) arg2)))
 (deftest-decompile if-primitive
   (defn test-fn [arg1 arg2] (if (java.lang.Double/isNaN 0.1) "NaN" arg1)))
+(deftest-decompile if-primitive2
+  (defn test-fn [arg1 arg2] (if (> arg1 arg2) (inc arg1) arg1)))
 (deftest-decompile simple-let
   (defn test-fn [arg1 arg2] (let [local1 (str arg1 arg1)] local1)))
 (deftest-decompile let-multiple
