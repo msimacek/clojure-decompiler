@@ -108,7 +108,7 @@
            code))))
 
 ; todo: unchecked casts, uncehcked ops, arrays, array ops, prim casts, array casts
-(gen-inline-tests 1 [- nil? zero? count int inc inc' dec dec' pos? neg? bit-not
+(gen-inline-tests 1 [- nil? zero? count inc inc' dec dec' pos? neg? bit-not
                      reduced?])
 (gen-inline-tests 2 [+ +' - -' * *' / > < >= <= = == identical? compare nth max
                      min rem quot bit-and bit-or bit-xor bit-and-not bit-clear
