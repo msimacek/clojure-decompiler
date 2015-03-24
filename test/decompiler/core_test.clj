@@ -91,11 +91,14 @@
   (defn test-fn [arg1 arg2] (str (str arg1 2) 1)))
 (deftest-decompile call-static
   (defn test-fn [arg1 arg2] (java.lang.Double/compare 1.0 1.00001)))
-(deftest-decompile call-static
+(deftest-decompile get-static
   (defn test-fn [] java.lang.Double/NaN))
 (deftest-decompile call-ctor
   ; TODO get rid of java.lang
   (defn test-fn [] (java.lang.StringBuilder. "I can haz instance?")))
+(deftest-decompile call-ctor-overloaded
+  ; TODO get rid of java.lang
+  (defn test-fn [arg1] (java.lang.Throwable. arg1)))
 
 ; test that inlined functions are converted to their clojure form
 (defmacro deftest-inline [sym arity]

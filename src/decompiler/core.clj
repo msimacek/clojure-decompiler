@@ -318,6 +318,11 @@
         method-name (insn-method insn pool)
         top (peek stack)
         top-type (:type top)
+        default-fn (fn []
+                     {:type :invoke-static
+                      :class (.getClassName insn pool)
+                      :method (.getMethodName insn pool)
+                      :args (eliminate-arg-casts (peek-n stack argc) arg-types)})
         expr (condp #(%1 %2) method-name
                #{"clojure.lang.RT/var"}
                {:type :var
@@ -362,10 +367,16 @@
                #{"clojure.lang.RT/readString"}
                {:type :const
                 :value (clojure.lang.RT/readString (:value (peek stack)))}
-               {:type :invoke-static
-                :class (.getClassName insn pool)
-                :method (.getMethodName insn pool)
-                :args (eliminate-arg-casts (peek-n stack argc) arg-types)})]
+               #{"clojure.lang.Reflector/invokeConstructor"}
+               (let [for-name-expr (peek-at stack 1)]
+                 (if (and (= (:class for-name-expr) "java.lang.Class")
+                          (= (:method for-name-expr) "forName")
+                          (= (-> for-name-expr :args first :type) :const))
+                   {:type :invoke-ctor
+                    :args @(:values top)
+                    :class (-> for-name-expr :args first :value)}
+                    (default-fn)))
+               (default-fn))]
     (assoc context
            :stack (conj (pop-n stack argc) expr)
            :statements (conj statements expr))))
