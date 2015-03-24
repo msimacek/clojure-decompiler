@@ -241,7 +241,7 @@
         item (peek stack)]
     (swap! (:values array) #(assoc* % idx item))
     (assoc context
-           :stack (conj (pop-n stack 3) array))))
+           :stack (pop-n stack 3))))
 
 (def inline-fns {"clojure.lang.Numbers/add" '+
                  "clojure.lang.Numbers/unchecked_add" '+
