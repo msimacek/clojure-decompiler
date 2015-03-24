@@ -243,60 +243,67 @@
     (assoc context
            :stack (pop-n stack 3))))
 
-(def inline-fns {"clojure.lang.Numbers/add" '+
-                 "clojure.lang.Numbers/unchecked_add" '+
-                 "clojure.lang.Numbers/addP" '+'
-                 "clojure.lang.Numbers/minus" '-
-                 "clojure.lang.Numbers/unchecked_minus" '-
-                 "clojure.lang.Numbers/minusP" '-'
-                 "clojure.lang.Numbers/multiply" '*
-                 "clojure.lang.Numbers/unchecked_multiply" '*
-                 "clojure.lang.Numbers/multiplyP" '*'
-                 "clojure.lang.Numbers/divide" '/
-                 "clojure.lang.Numbers/gt" '>
-                 "clojure.lang.Numbers/lt" '<
-                 "clojure.lang.Numbers/equiv" '==
-                 "clojure.lang.Numbers/gte" '>=
-                 "clojure.lang.Numbers/lte" '<=
-                 "clojure.lang.Numbers/isZero" 'zero?
-                 "clojure.lang.Numbers/inc" 'inc
-                 "clojure.lang.Numbers/unchecked_inc" 'inc
-                 "clojure.lang.Numbers/incP" 'inc'
-                 "clojure.lang.Numbers/dec" 'dec
-                 "clojure.lang.Numbers/unchecked_dec" 'dec
-                 "clojure.lang.Numbers/decP" 'dec'
-                 "clojure.lang.Numbers/max" 'max
-                 "clojure.lang.Numbers/min" 'min
-                 "clojure.lang.Numbers/isPos" 'pos?
-                 "clojure.lang.Numbers/isNeg" 'neg?
-                 "clojure.lang.Numbers/remainder" 'rem
-                 "clojure.lang.Numbers/quotient" 'quot
-                 "clojure.lang.Numbers/not" 'bit-not
-                 "clojure.lang.Numbers/and" 'bit-and
-                 "clojure.lang.Numbers/or" 'bit-or
-                 "clojure.lang.Numbers/xor" 'bit-xor
-                 "clojure.lang.Numbers/andNot" 'bit-and-not
-                 "clojure.lang.Numbers/clearBit" 'bit-clear
-                 "clojure.lang.Numbers/setBit" 'bit-set
-                 "clojure.lang.Numbers/flipBit" 'bit-flip
-                 "clojure.lang.Numbers/testBit" 'bit-test
-                 "clojure.lang.Numbers/shiftLeft" 'bit-shift-left
-                 "clojure.lang.Numbers/shiftRight" 'bit-shift-right
-                 "clojure.lang.Numbers/unsignedShiftRight" 'unsigned-bit-shift-right
-                 "clojure.lang.Util/equiv" '=
-                 "clojure.lang.Util/compare" 'compare
-                 "clojure.lang.RT/count" 'count
-                 "clojure.lang.RT/nth" 'nth
-                 "clojure.lang.RT/get" 'get
-                 "clojure.lang.RT/isReduced" 'reduced?})
+(def casts '#{char short int long float double})
+
+(def inline-fns
+  (apply assoc {"clojure.lang.Numbers/add" '+
+                "clojure.lang.Numbers/unchecked_add" '+
+                "clojure.lang.Numbers/addP" '+'
+                "clojure.lang.Numbers/minus" '-
+                "clojure.lang.Numbers/unchecked_minus" '-
+                "clojure.lang.Numbers/minusP" '-'
+                "clojure.lang.Numbers/multiply" '*
+                "clojure.lang.Numbers/unchecked_multiply" '*
+                "clojure.lang.Numbers/multiplyP" '*'
+                "clojure.lang.Numbers/divide" '/
+                "clojure.lang.Numbers/gt" '>
+                "clojure.lang.Numbers/lt" '<
+                "clojure.lang.Numbers/equiv" '==
+                "clojure.lang.Numbers/gte" '>=
+                "clojure.lang.Numbers/lte" '<=
+                "clojure.lang.Numbers/isZero" 'zero?
+                "clojure.lang.Numbers/inc" 'inc
+                "clojure.lang.Numbers/unchecked_inc" 'inc
+                "clojure.lang.Numbers/incP" 'inc'
+                "clojure.lang.Numbers/dec" 'dec
+                "clojure.lang.Numbers/unchecked_dec" 'dec
+                "clojure.lang.Numbers/decP" 'dec'
+                "clojure.lang.Numbers/max" 'max
+                "clojure.lang.Numbers/min" 'min
+                "clojure.lang.Numbers/isPos" 'pos?
+                "clojure.lang.Numbers/isNeg" 'neg?
+                "clojure.lang.Numbers/remainder" 'rem
+                "clojure.lang.Numbers/quotient" 'quot
+                "clojure.lang.Numbers/not" 'bit-not
+                "clojure.lang.Numbers/and" 'bit-and
+                "clojure.lang.Numbers/or" 'bit-or
+                "clojure.lang.Numbers/xor" 'bit-xor
+                "clojure.lang.Numbers/andNot" 'bit-and-not
+                "clojure.lang.Numbers/clearBit" 'bit-clear
+                "clojure.lang.Numbers/setBit" 'bit-set
+                "clojure.lang.Numbers/flipBit" 'bit-flip
+                "clojure.lang.Numbers/testBit" 'bit-test
+                "clojure.lang.Numbers/shiftLeft" 'bit-shift-left
+                "clojure.lang.Numbers/shiftRight" 'bit-shift-right
+                "clojure.lang.Numbers/unsignedShiftRight" 'unsigned-bit-shift-right
+                "clojure.lang.Util/equiv" '=
+                "clojure.lang.Util/compare" 'compare
+                "clojure.lang.RT/count" 'count
+                "clojure.lang.RT/nth" 'nth
+                "clojure.lang.RT/get" 'get
+                "clojure.lang.RT/isReduced" 'reduced?}
+         (mapcat #(vector (str "clojure.lang.RT/" % "Cast") %) casts)))
+
+(defn eliminate-cast [expr target-type]
+  (if (and (= (:type expr) :invoke)
+           (casts (:name expr))
+           (= (:return-type expr) target-type))
+    (-> expr :args first)
+    expr))
 
 (defn eliminate-arg-casts [args arg-types]
-  (map (fn [arg arg-type]
-         (if (and (:is-cast arg)
-                  (= arg-type (:primitive-return arg)))
-           (-> arg :args first)
-           arg))
-       args arg-types))
+  (assert (= (count args) (count arg-types)))
+  (map eliminate-cast args arg-types))
 
 (defmethod process-insn INVOKESTATIC
   [_ insn {:keys [stack pool statements] :as context}]
@@ -308,90 +315,75 @@
         coll-consts {"clojure.lang.RT/vector" vec
                      "clojure.lang.RT/set" set
                      "clojure.lang.RT/mapUniqueKeys" #(apply hash-map %)}
-        no-ops #{"java.lang.Long/valueOf"
+        boxing #{"java.lang.Long/valueOf"
                  "java.lang.Double/valueOf"
-                 "java.lang.Integer/valueOf"}
-        casts (->> '[char short int long float double]
-                   (map #(vector % (Reflector/getStaticField Type (string/upper-case %))))
-                   (mapcat #(vector (str "clojure.lang.RT/" (first %) "Cast") %))
-                   (apply hash-map))
+                 "java.lang.Integer/valueOf"
+                 "clojure.lang.Numbers/num"}
         method-name (insn-method insn pool)
-        top (peek stack)
-        top-type (:type top)
-        default-fn (fn []
-                     {:type :invoke-static
-                      :class (.getClassName insn pool)
-                      :method (.getMethodName insn pool)
-                      :args (eliminate-arg-casts (peek-n stack argc) arg-types)})
+        args (eliminate-arg-casts (peek-n stack argc) arg-types)
+        expr {:type :invoke-static
+              :class (.getClassName insn pool)
+              :method (.getMethodName insn pool)
+              :args args}
         expr (condp #(%1 %2) method-name
                #{"clojure.lang.RT/var"}
                {:type :var
-                :ns (demunge (:value (peek-at stack 1)))
-                :name (demunge (:value (peek stack)))}
+                :ns (demunge (:value (first args)))
+                :name (demunge (:value (second args)))}
                coll-consts
                {:type :const-coll
                 :ctor (coll-consts method-name)
-                :value @(:values (peek stack))}
+                :value @(-> args first :values)}
                inline-fns
                {:type :invoke
                 :ns 'clojure.core
                 :name (inline-fns method-name)
-                :args (eliminate-arg-casts (peek-n stack argc) arg-types)
-                :primitive-return (.getReturnType insn pool)}
-               #{"clojure.lang.Numbers/num"}
-               top
-               casts :>>
-               (fn [[cast-sym cast-class]]
-                 (cond
-                   (:primitive-return top) top
-                   :default {:type :invoke
-                             :ns 'clojure.core
-                             :name cast-sym
-                             :args [top]
-                             :is-cast true
-                             :primitive-return cast-class}))
+                :args args
+                :return-type (.getReturnType insn pool)}
                #{"clojure.lang.Util/identical"}
-               (let [variant (-> stack peek (:value :not-there) identical?-variants)]
+               (let [variant (-> args second (:value :not-there) identical?-variants)]
                  {:type :invoke
                   :ns 'clojure.core
                   :name (or variant 'identical?)
-                  :args (if variant [(peek-at stack 1)] (peek-n stack argc))})
-               no-ops
+                  :args (if variant [(first args)] args)})
+               boxing
+               ; We want to skip cast elimination. If there was a cast, it was
+               ; explicit, otherwise the compiler wouldn't immediately box it
+               ; again for no reason
                (peek stack)
                #{"java.lang.Character/valueOf"}
                {:type :const
-                :value (-> stack peek :value char)}
+                :value (-> args first :value char)}
                #{"clojure.lang.RT/keyword"}
                {:type :const
-                :value (-> stack peek :value keyword)}
+                :value (-> args second :value keyword)}
                #{"clojure.lang.RT/readString"}
                {:type :const
-                :value (clojure.lang.RT/readString (:value (peek stack)))}
+                :value (clojure.lang.RT/readString (-> args first :value))}
                #{"clojure.lang.Reflector/invokeConstructor"}
-               (let [for-name-expr (peek-at stack 1)]
+               (let [for-name-expr (first args)]
                  (if (and (= (:class for-name-expr) "java.lang.Class")
                           (= (:method for-name-expr) "forName")
                           (= (-> for-name-expr :args first :type) :const))
                    {:type :invoke-ctor
-                    :args @(:values top)
+                    :args @(-> args second :values)
                     :class (-> for-name-expr :args first :value)}
-                    (default-fn)))
+                    expr))
                #{"clojure.lang.Reflector/invokeNoArgInstanceMember"}
-               (let [method-or-field (peek-at stack 1)
-                     instance (peek-at stack 2)]
+               (let [method-or-field (second args)]
                  (if (= (:type method-or-field) :const)
                    {:type :invoke-member
-                    :args [instance]
+                    :args [(first args)]
                     :member (:value method-or-field)}
-                    (default-fn)))
+                    expr))
                #{"clojure.lang.Reflector/invokeInstanceMethod"}
-               (let [method-name-expr (peek-at stack 1)]
+               (let [method-name-expr (second args)]
                  (if (= (:type method-name-expr) :const)
                    {:type :invoke-member
-                    :args (cons (peek-at stack 2) @(:values top))
+                    :args (cons (first args) @(-> args (nth 2) :values))
                     :member (:value method-name-expr)}
-                    (default-fn)))
-               (default-fn))]
+                    expr))
+               expr)]
     (assoc context
            :stack (conj (pop-n stack argc) expr)
            :statements (conj statements expr))))
@@ -422,9 +414,10 @@
 
 (defmethod process-insn INVOKESPECIAL
   [_ insn {:keys [stack pool statements] :as context}]
-  (let [argc (count (.getArgumentTypes insn pool))
+  (let [arg-types (.getArgumentTypes insn pool)
+        argc (count arg-types)
         expr {:type :invoke-ctor
-              :args (peek-n stack argc)
+              :args (eliminate-arg-casts (peek-n stack argc) arg-types)
               :class (.getClassName insn pool)}]
     ;TODO check it's <init>
     (assoc context
