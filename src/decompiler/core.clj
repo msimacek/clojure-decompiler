@@ -356,7 +356,7 @@
                 :value (-> args first :value char)}
                #{"clojure.lang.RT/keyword"}
                {:type :const
-                :value (-> args second :value keyword)}
+                :value (keyword (-> args first :value) (-> args second :value))}
                #{"clojure.lang.RT/readString"}
                {:type :const
                 :value (clojure.lang.RT/readString (-> args first :value))}
