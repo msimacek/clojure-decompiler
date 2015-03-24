@@ -97,8 +97,11 @@
   ; TODO get rid of java.lang
   (defn test-fn [] (java.lang.StringBuilder. "I can haz instance?")))
 (deftest-decompile call-ctor-overloaded
-  ; TODO get rid of java.lang
   (defn test-fn [arg1] (java.lang.Throwable. arg1)))
+(deftest-decompile call-virtual-reflective-no-arg
+  (defn test-fn [arg1] (.getSimpleRemoteStatelessSessionProxyFactoryBean arg1)))
+(deftest-decompile call-virtual-reflective-args
+  (defn test-fn [arg1 arg2] (.getSimpleRemoteStatelessSessionProxyFactoryBean arg1 arg2)))
 
 ; test that inlined functions are converted to their clojure form
 (defmacro deftest-inline [sym arity]

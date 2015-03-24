@@ -376,6 +376,21 @@
                     :args @(:values top)
                     :class (-> for-name-expr :args first :value)}
                     (default-fn)))
+               #{"clojure.lang.Reflector/invokeNoArgInstanceMember"}
+               (let [method-or-field (peek-at stack 1)
+                     instance (peek-at stack 2)]
+                 (if (= (:type method-or-field) :const)
+                   {:type :invoke-member
+                    :args [instance]
+                    :member (:value method-or-field)}
+                    (default-fn)))
+               #{"clojure.lang.Reflector/invokeInstanceMethod"}
+               (let [method-name-expr (peek-at stack 1)]
+                 (if (= (:type method-name-expr) :const)
+                   {:type :invoke-member
+                    :args (cons (peek-at stack 2) @(:values top))
+                    :member (:value method-name-expr)}
+                    (default-fn)))
                (default-fn))]
     (assoc context
            :stack (conj (pop-n stack argc) expr)
@@ -450,6 +465,7 @@
          :invoke (list* (:name expr) args)
          :invoke-static (list* (symbol (str (:class expr) \/ (:method expr))) args)
          :invoke-ctor (list* (symbol (str (:class expr) \.)) args)
+         :invoke-member (list* (symbol (str \. (:member expr))) args)
          :recur (list* 'recur (map render @(:args expr)))
          :get-field (symbol (str (:class expr) \/ (:field expr)))
          :let (render-binding 'let expr)
