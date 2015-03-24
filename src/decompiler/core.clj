@@ -10,8 +10,8 @@
              LoadInstruction StoreInstruction ConstantPushInstruction
              GotoInstruction IfInstruction
              ACONST_NULL ARETURN RETURN DUP LDC LDC_W LDC2_W INVOKESTATIC
-             PUTSTATIC GETSTATIC INVOKEVIRTUAL INVOKEINTERFACE IFNULL
-             IFEQ IF_ACMPEQ ANEWARRAY AASTORE)))
+             PUTSTATIC GETSTATIC INVOKEVIRTUAL INVOKEINTERFACE INVOKESPECIAL
+             NEW IFNULL IFEQ IF_ACMPEQ ANEWARRAY AASTORE)))
 (def ^:dynamic *debug* false)
 
 (defn pop-n [stack n] (let [c (count stack)] (subvec stack 0 (- c n))))
@@ -381,6 +381,23 @@
            :stack (conj (pop-n stack (inc argc)) expr)
            :statements (conj statements expr))))
 
+(defmethod process-insn NEW
+  [_ insn {:keys [stack pool] :as context}]
+  (assoc context
+         :stack (conj stack {:type :new
+                             :class (.getLoadClassType insn pool)})))
+
+(defmethod process-insn INVOKESPECIAL
+  [_ insn {:keys [stack pool statements] :as context}]
+  (let [argc (count (.getArgumentTypes insn pool))
+        expr {:type :invoke-ctor
+              :args (peek-n stack argc)
+              :class (.getClassName insn pool)}]
+    ;TODO check it's <init>
+    (assoc context
+           :stack (conj (pop-n stack (+ argc 2)) expr)
+           :statements (conj statements expr))))
+
 (defmethod process-insn ARETURN
   [_ insn {:keys [stack statements] :as context}]
   (assoc context
@@ -421,6 +438,7 @@
          :const-coll ((:ctor expr) (map render (:value expr)))
          :invoke (list* (:name expr) args)
          :invoke-static (list* (symbol (str (:class expr) \/ (:method expr))) args)
+         :invoke-ctor (list* (symbol (str (:class expr) \.)) args)
          :recur (list* 'recur (map render @(:args expr)))
          :get-field (symbol (str (:class expr) \/ (:field expr)))
          :let (render-binding 'let expr)
