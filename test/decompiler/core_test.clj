@@ -102,6 +102,8 @@
   (defn test-fn [arg1] (.getSimpleRemoteStatelessSessionProxyFactoryBean arg1)))
 (deftest-decompile call-virtual-reflective-args
   (defn test-fn [arg1 arg2] (.getSimpleRemoteStatelessSessionProxyFactoryBean arg1 arg2)))
+(deftest-decompile get-member-field
+  (defn test-fn [] (.x (java.awt.Point. 1 2))))
 
 ; test that inlined functions are converted to their clojure form
 (defmacro deftest-inline [sym arity]

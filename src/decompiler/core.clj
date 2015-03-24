@@ -11,7 +11,7 @@
              GotoInstruction IfInstruction
              ACONST_NULL ARETURN RETURN DUP LDC LDC_W LDC2_W INVOKESTATIC
              PUTSTATIC GETSTATIC INVOKEVIRTUAL INVOKEINTERFACE INVOKESPECIAL
-             NEW IFNULL IFEQ IF_ACMPEQ ANEWARRAY AASTORE)))
+             NEW IFNULL IFEQ IF_ACMPEQ ANEWARRAY AASTORE GETFIELD)))
 (def ^:dynamic *debug* false)
 
 (defn pop-n [stack n] (let [c (count stack)] (subvec stack 0 (- c n))))
@@ -395,6 +395,13 @@
     (assoc context
            :stack (conj (pop-n stack argc) expr)
            :statements (conj statements expr))))
+
+(defmethod process-insn GETFIELD
+  [_ insn {:keys [stack pool] :as context}]
+  (assoc context
+         :stack (conj (pop stack) {:type :invoke-member
+                                    :args [(peek stack)]
+                                    :member (.getFieldName insn pool)})))
 
 (defmethod process-insn INVOKEINTERFACE
   [_ insn {:keys [stack pool statements] :as context}]
