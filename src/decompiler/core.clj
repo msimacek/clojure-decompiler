@@ -126,22 +126,6 @@
            :stack (pop stack)
            :fields (assoc fields (.getFieldName insn pool) (peek stack)))))
 
-(defn get-expr [e ]
-  (condp = (:type e)
-    :if (or (get-expr (:then e)) (get-expr (:else e)))
-    :let (get-expr (:body e))
-    :loop (get-expr (:body e))
-    e))
-
-(defn update-expr [e f]
-  (condp = (:type e)
-    :if (assoc e
-               :then (update-expr (:then e) f)
-               :else (update-expr (:else e) f))
-    :let (assoc e :body (update-expr (:body e) f))
-    :loop (assoc e :body (update-expr (:body e) f))
-    (f e)))
-
 (defmethod process-insn StoreInstruction
   [insn-index insn {:keys [stack vars statements] :as context}]
   (let [index (.getIndex insn)
