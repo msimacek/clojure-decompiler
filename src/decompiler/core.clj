@@ -368,21 +368,21 @@
                    {:type :invoke-ctor
                     :args @(-> args second :values)
                     :class (-> for-name-expr :args first :value)}
-                    expr))
+                   expr))
                #{"clojure.lang.Reflector/invokeNoArgInstanceMember"}
                (let [method-or-field (second args)]
                  (if (= (:type method-or-field) :const)
                    {:type :invoke-member
                     :args [(first args)]
                     :member (:value method-or-field)}
-                    expr))
+                   expr))
                #{"clojure.lang.Reflector/invokeInstanceMethod"}
                (let [method-name-expr (second args)]
                  (if (= (:type method-name-expr) :const)
                    {:type :invoke-member
                     :args (cons (first args) @(-> args (nth 2) :values))
                     :member (:value method-name-expr)}
-                    expr))
+                   expr))
                expr)]
     (assoc context
            :stack (conj (pop-n stack argc) expr)
@@ -392,8 +392,8 @@
   [_ insn {:keys [stack pool] :as context}]
   (assoc context
          :stack (conj (pop stack) {:type :invoke-member
-                                    :args [(peek stack)]
-                                    :member (.getFieldName insn pool)})))
+                                   :args [(peek stack)]
+                                   :member (.getFieldName insn pool)})))
 
 (defmethod process-insn INVOKEINTERFACE
   [_ insn {:keys [stack pool statements] :as context}]
@@ -421,8 +421,23 @@
               :class (.getClassName insn pool)}]
     ;TODO check it's <init>
     (assoc context
+           ; TODO don't assume that the ojectref was dup'ed
            :stack (conj (pop-n stack (+ argc 2)) expr)
            :statements (conj statements expr))))
+
+(defmethod process-insn INVOKEVIRTUAL
+  [_ insn {:keys [stack pool statements] :as context}]
+  (if (= (insn-method insn pool) "clojure.lang.Var/getRawRoot")
+    context
+    (let [arg-types (.getArgumentTypes insn pool)
+          argc (count arg-types)
+          expr {:type :invoke-member
+                :args (cons (peek-at stack argc)
+                            (eliminate-arg-casts (peek-n stack argc) arg-types))
+                :member (.getMethodName insn pool)}]
+      (assoc context
+             :stack (conj (pop-n stack (+ argc 1)) expr)
+             :statements (conj statements expr)))))
 
 (defmethod process-insn ARETURN
   [_ insn {:keys [stack statements] :as context}]
