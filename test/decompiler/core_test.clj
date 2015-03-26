@@ -158,6 +158,7 @@
   (defn test-fn [arg1 arg2] (if (java.lang.Double/isNaN 0.1) "NaN" arg1)))
 (deftest-decompile if-primitive2
   (defn test-fn [arg1 arg2] (if (> arg1 arg2) (inc arg1) arg1)))
+
 (deftest-decompile simple-let
   (defn test-fn [arg1 arg2] (let [local1 (str arg1 arg1)] local1)))
 (deftest-decompile let-multiple
@@ -175,6 +176,7 @@
         ; this is technically correct
         (let [local2 (first local1)]
           (str local2 local1))))))
+
 (deftest-decompile simple-loop
   (defn test-fn [arg1 arg2]
     (loop [local1 (concat arg1 arg2)]
@@ -201,3 +203,31 @@
 ;                (if local3
 ;                  (recur nil (next local3))
 ;                  local4)) local1))))
+
+(deftest-decompile multiple-statements
+  (defn test-fn [arg1]
+    (println 0)
+    (println arg1)))
+; (deftest-decompile even-more-statements
+;   (defn test-fn [arg1]
+;     (println 0)
+;     (.println java.lang.System/out "bbb")
+;     (println arg1)))
+(deftest-decompile do-in-expression
+  (defn test-fn [arg1]
+    (str (inc arg1) (do (println arg1) (dec arg1)))))
+(deftest-decompile multiple-statements-let
+  (defn test-fn [arg1]
+    (let [local1 (inc arg1)]
+      (println 0)
+      (println arg1))))
+(deftest-decompile multiple-statements-if
+  (defn test-fn [arg1]
+    (if arg1
+      (do (println arg1) (println ";"))
+      (do (println 0) (println 1)))))
+(deftest-decompile multiple-statements-loop
+  (defn test-fn [arg1]
+    (loop [local1 (inc arg1)]
+      (println local1)
+      (if local1 (recur (dec local1))))))
