@@ -297,6 +297,18 @@
   (assert (= (count args) (count arg-types)))
   (map eliminate-cast args arg-types))
 
+(defn generic-invoke-expr
+  [insn expr argc {:keys [stack pool statement code] :as context}]
+    (let [return-type (.getReturnType insn pool)
+          is-void (= return-type Type/VOID)
+          expr (assoc expr
+                      :preceding-statement statement
+                      :return-type return-type)]
+      (assoc context
+             :stack (conj (pop-n stack argc) expr)
+             :statement nil
+             :code (if is-void (rest code) code)))) ; get rid of aconst_null, store this as expression
+
 (defmethod process-insn INVOKESTATIC
   [_ insn {:keys [stack pool statement] :as context}]
   (let [arg-types (.getArgumentTypes insn pool)
@@ -376,13 +388,12 @@
                     :member (:value method-name-expr)}
                    expr))
                expr)
-        is-invoke (.startsWith (name (:type expr)) "invoke")
-        expr (if is-invoke
-               (assoc expr :preceding-statement statement)
-               expr)]
-    (assoc context
-           :stack (conj (pop-n stack argc) expr)
-           :statement (if is-invoke nil statement))))
+        is-invoke (.startsWith (name (:type expr)) "invoke")]
+    (if is-invoke
+      (generic-invoke-expr insn expr argc context)
+      (assoc context
+             :stack (conj (pop-n stack argc) expr)
+             :statement nil))))
 
 (defmethod process-insn GETFIELD
   [_ insn {:keys [stack pool] :as context}]
@@ -424,19 +435,6 @@
            :stack (conj (pop-n stack (+ argc 2)) expr)
            :statement nil)))
 
-(defn generic-invoke-expr
-  [insn expr {:keys [stack pool statement code] :as context}]
-    (let [argc (-> expr :args count)
-          return-type (.getReturnType insn pool)
-          is-void (= return-type Type/VOID)
-          expr (assoc expr
-                      :preceding-statement statement
-                      :return-type return-type)]
-      (assoc context
-             :stack (conj (pop-n stack argc) expr)
-             :statement nil
-             :code (if is-void (rest code) code)))) ; get rid of aconst_null, store this as expression
-
 (defmethod process-insn INVOKEVIRTUAL
   [_ insn {:keys [stack pool statement code] :as context}]
   (if (= (insn-method insn pool) "clojure.lang.Var/getRawRoot")
@@ -447,7 +445,7 @@
           expr {:type :invoke-member
                 :args (eliminate-arg-casts args (cons Type/OBJECT arg-types))
                 :member (.getMethodName insn pool)}]
-      (generic-invoke-expr insn expr context))))
+      (generic-invoke-expr insn expr (inc argc) context))))
 
 (defmethod process-insn PopInstruction
   [_ insn {:keys [stack statement] :as context}]

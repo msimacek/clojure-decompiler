@@ -94,6 +94,8 @@
   (defn test-fn [arg1 arg2] (str (str arg1 2) 1)))
 (deftest-decompile call-static
   (defn test-fn [arg1 arg2] (java.lang.Double/compare 1.0 1.00001)))
+(deftest-decompile call-static-void
+  (defn test-fn [arg1 arg2] (java.lang.System/exit 1)))
 (deftest-decompile get-static
   (defn test-fn [] java.lang.Double/NaN))
 (deftest-decompile call-ctor
