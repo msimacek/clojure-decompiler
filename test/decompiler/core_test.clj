@@ -217,6 +217,10 @@
     (println 0)
     (.println java.lang.System/out "bbb")
     (println arg1)))
+(deftest-decompile multiple-statements-const
+  (defn test-fn [arg1]
+    (println 0)
+    0))
 (deftest-decompile do-in-expression
   (defn test-fn [arg1]
     (str (inc arg1) (do (println arg1) (dec arg1)))))

@@ -47,9 +47,13 @@
   (if (seq (:code context))
     (let [[[index insn] & code] (:code context)]
       (recur (process-insn index insn (assoc context :code code))))
-    (if (:return context)
-      context
-      (assoc context :return (peek (:stack context))))))
+    (let [top (if-let [r (:return context)]
+                r
+                (-> context :stack peek))
+          top (if-let [p (:preceding-statement top)]
+                top
+                (assoc top :preceding-statement (:statement context)))]
+      (assoc context :return top))))
 
 (defmethod process-insn :default [_ _ context] context)
 
