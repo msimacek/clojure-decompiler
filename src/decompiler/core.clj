@@ -8,7 +8,7 @@
            (org.apache.bcel.generic
              ConstantPoolGen InstructionList Type
              LoadInstruction StoreInstruction ConstantPushInstruction
-             GotoInstruction IfInstruction
+             GotoInstruction IfInstruction PopInstruction
              ACONST_NULL ARETURN RETURN DUP LDC LDC_W LDC2_W INVOKESTATIC
              PUTSTATIC GETSTATIC INVOKEVIRTUAL INVOKEINTERFACE INVOKESPECIAL
              NEW IFNULL IFEQ IF_ACMPEQ ANEWARRAY AASTORE GETFIELD)))
@@ -54,9 +54,8 @@
 (defmethod process-insn :default [_ _ context] context)
 
 (defn process-if
-  [index insn condition {:keys [code stack statements pool] :as context}]
-  (let [target (+ index (.getIndex insn))
-        index< #(fn [[i _]] (< i %))
+  [index insn condition target {:keys [code stack statement pool] :as context}]
+  (let [index< #(fn [[i _]] (< i %))
         then (process-insns (assoc context
                                    :code (take-while (index< target) code)))
         end (:goto-target then)
@@ -72,26 +71,31 @@
                ; real if
                {:type :if
                 :cond condition
+                :preceding-statement statement
                 :else (:return else)
                 :then (:return then)})]
     (assoc context
            :code (if end (drop-while (index< end) code) ())
            :stack (conj stack expr)
-           :statements (conj statements expr))))
+           :statement nil)))
 
 
 (defmethod process-insn IFEQ
   [index insn {:keys [stack] :as context}]
-  (process-if index insn (peek stack) (assoc context :stack (pop stack))))
+  (process-if index insn (peek stack)
+              (+ index (.getIndex insn))
+              (assoc context :stack (pop stack))))
 
 (defmethod process-insn IFNULL
-  [index insn {:keys [code stack statements pool] :as context}]
+  [index insn {:keys [code stack pool] :as context}]
   (let [[[_ get-false-insn] & code] code
         _ (assert (instance? GETSTATIC get-false-insn))
         _ (assert (= (insn-field get-false-insn pool) "java.lang.Boolean/FALSE"))
         [[_ acmpeq-insn] & code] code
         _ (assert (instance? IF_ACMPEQ acmpeq-insn))]
-    (process-if index insn (peek stack)
+    (process-if index insn
+                (peek stack)
+                (+ index (.getIndex insn) 1) ; skip pop
                 (assoc context :stack (pop-n stack 2))))) ; 1 -1 + 2
 
 (defmethod process-insn LoadInstruction
@@ -127,7 +131,7 @@
            :fields (assoc fields (.getFieldName insn pool) (peek stack)))))
 
 (defmethod process-insn StoreInstruction
-  [insn-index insn {:keys [stack vars statements] :as context}]
+  [insn-index insn {:keys [stack vars statement] :as context}]
   (let [index (.getIndex insn)
         existing (nth vars index nil)
         local (if (#{:local :arg} (:type existing))
@@ -166,6 +170,7 @@
             body (if squash (:body inner-expr) inner-expr)
             recurs (if squash (:recurs inner-expr) recurs)
             expr {:type binding-type
+                  :preceding-statement statement
                   :locals locals
                   :body body
                   :recurs recurs}]
@@ -177,10 +182,11 @@
                     recurs))
         (assoc inner-context
                :code nil ; it's nil already, just making it obvious
-               :return expr))))) ; we wrapped the return into let
+               :return expr
+               :statement nil))))) ; we wrapped the return into let
 
 (defmethod process-insn GotoInstruction
-  [index insn {:keys [stack vars statements arg-count] :as context}]
+  [index insn {:keys [stack vars arg-count] :as context}]
   (if (neg? (.getIndex insn))
     (assoc context
            :code nil
@@ -290,7 +296,7 @@
   (map eliminate-cast args arg-types))
 
 (defmethod process-insn INVOKESTATIC
-  [_ insn {:keys [stack pool statements] :as context}]
+  [_ insn {:keys [stack pool statement] :as context}]
   (let [arg-types (.getArgumentTypes insn pool)
         argc (count arg-types)
         identical?-variants {true 'true?
@@ -308,6 +314,7 @@
         expr {:type :invoke-static
               :class (.getClassName insn pool)
               :method (.getMethodName insn pool)
+              :preceding-statement statement
               :args args}
         expr (condp #(%1 %2) method-name
                #{"clojure.lang.RT/var"}
@@ -320,6 +327,7 @@
                 :value @(-> args first :values)}
                inline-fns
                {:type :invoke
+                :preceding-statement statement
                 :ns 'clojure.core
                 :name (inline-fns method-name)
                 :args args
@@ -327,6 +335,7 @@
                #{"clojure.lang.Util/identical"}
                (let [variant (-> args second (:value :not-there) identical?-variants)]
                  {:type :invoke
+                  :preceding-statement statement
                   :ns 'clojure.core
                   :name (or variant 'identical?)
                   :args (if variant [(first args)] args)})
@@ -350,6 +359,7 @@
                           (= (:method for-name-expr) "forName")
                           (= (-> for-name-expr :args first :type) :const))
                    {:type :invoke-ctor
+                    :preceding-statement statement
                     :args @(-> args second :values)
                     :class (-> for-name-expr :args first :value)}
                    expr))
@@ -357,6 +367,7 @@
                (let [method-or-field (second args)]
                  (if (= (:type method-or-field) :const)
                    {:type :invoke-member
+                    :preceding-statement statement
                     :args [(first args)]
                     :member (:value method-or-field)}
                    expr))
@@ -364,13 +375,14 @@
                (let [method-name-expr (second args)]
                  (if (= (:type method-name-expr) :const)
                    {:type :invoke-member
+                    :preceding-statement statement
                     :args (cons (first args) @(-> args (nth 2) :values))
                     :member (:value method-name-expr)}
                    expr))
                expr)]
     (assoc context
            :stack (conj (pop-n stack argc) expr)
-           :statements (conj statements expr))))
+           :statement nil)))
 
 (defmethod process-insn GETFIELD
   [_ insn {:keys [stack pool] :as context}]
@@ -380,15 +392,17 @@
                                    :member (.getFieldName insn pool)})))
 
 (defmethod process-insn INVOKEINTERFACE
-  [_ insn {:keys [stack pool statements] :as context}]
+  [_ insn {:keys [stack pool statement] :as context}]
   ; (if (= (.getMethodName insn pool) "invoke") ;TODO check type
   (let [argc (count (.getArgumentTypes insn pool))
+        args (peek-n stack argc)
         expr {:type :invoke
-              :args (peek-n stack argc)
+              :preceding-statement statement
+              :args args
               :name (:name (peek-at stack argc))}]
     (assoc context
            :stack (conj (pop-n stack (inc argc)) expr)
-           :statements (conj statements expr))))
+           :statement nil)))
 
 (defmethod process-insn NEW
   [_ insn {:keys [stack pool] :as context}]
@@ -397,34 +411,43 @@
                              :class (.getLoadClassType insn pool)})))
 
 (defmethod process-insn INVOKESPECIAL
-  [_ insn {:keys [stack pool statements] :as context}]
+  [_ insn {:keys [stack pool statement] :as context}]
   (let [arg-types (.getArgumentTypes insn pool)
         argc (count arg-types)
         expr {:type :invoke-ctor
+              :preceding-statement statement
               :args (eliminate-arg-casts (peek-n stack argc) arg-types)
               :class (.getClassName insn pool)}]
     ;TODO check it's <init>
     (assoc context
            ; TODO don't assume that the ojectref was dup'ed
            :stack (conj (pop-n stack (+ argc 2)) expr)
-           :statements (conj statements expr))))
+           :statement nil)))
 
 (defmethod process-insn INVOKEVIRTUAL
-  [_ insn {:keys [stack pool statements] :as context}]
+  [_ insn {:keys [stack pool statement] :as context}]
   (if (= (insn-method insn pool) "clojure.lang.Var/getRawRoot")
     context
     (let [arg-types (.getArgumentTypes insn pool)
           argc (count arg-types)
+          args (cons (peek-at stack argc) (peek-n stack argc))
           expr {:type :invoke-member
-                :args (cons (peek-at stack argc)
-                            (eliminate-arg-casts (peek-n stack argc) arg-types))
+                :preceding-statement statement
+                :args (eliminate-arg-casts args (cons Type/OBJECT arg-types))
                 :member (.getMethodName insn pool)}]
       (assoc context
              :stack (conj (pop-n stack (+ argc 1)) expr)
-             :statements (conj statements expr)))))
+             :statement nil))))
+
+(defmethod process-insn PopInstruction
+  [_ insn {:keys [stack statement] :as context}]
+  (assert (not statement)) ; all statements should have been picked up by invokes
+  (assoc context
+         :stack (pop stack)
+         :statement (peek stack)))
 
 (defmethod process-insn ARETURN
-  [_ insn {:keys [stack statements] :as context}]
+  [_ insn {:keys [stack] :as context}]
   (assoc context
          :code nil
          :stack (pop stack)
@@ -441,17 +464,15 @@
                         :clazz clazz
                         :method method
                         :fields {}
-                        :statements []
                         :pool (ConstantPoolGen. (.getConstantPool clazz))
                         :arg-count arg-count
                         :vars (mapv (fn [n] {:type :arg :index n}) (range arg-count))}
                        context)]
     (process-insns context)))
 
-(defn render-expr [exprs fn-args]
-  ((fn render [exprs]
-     (let [expr (if (vector? exprs) (last exprs) exprs)
-           args (map render (:args expr ()))
+(defn render-expr [expr fn-args]
+  ((fn render [expr]
+     (let [args (map render (:args expr ()))
            local-name #(symbol (str "local" (- (:index %) (count fn-args))))
            render-binding (fn [sym expr]
                             (list sym (vec (interleave
@@ -479,7 +500,7 @@
          :arg (if-let [assign (:assign expr)]
                 (render assign)
                 (symbol (str "arg" (:index expr)))))))
-   exprs))
+   expr))
 
 (defn decompile-fn [clazz]
   (let [[fn-ns fn-name] (map demunge (string/split (.getClassName clazz) #"\$" 2))
@@ -487,11 +508,12 @@
         fields (:fields (method->expr clazz clinit))
         invoke (find-method clazz "invoke") ;TODO multiple arities
         return (:return (method->expr clazz invoke :fields fields))
+        body [return] ; TODO
         argc (count (.getArgumentTypes invoke))
         args (mapv #(symbol (str "arg" %)) (range 1 (inc argc)))
         _ (when *debug* (pprint return))]
-    (list 'defn (symbol fn-name) args
-          (render-expr return args))))
+    (list* 'defn (symbol fn-name) args
+           (map #(render-expr % args) body))))
 
 (defn decompile-class [clazz]
   "Decompiles single class file"
