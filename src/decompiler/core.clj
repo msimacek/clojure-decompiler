@@ -57,13 +57,15 @@
   [index insn condition target {:keys [code stack statement pool] :as context}]
   (let [index< #(fn [[i _]] (< i %))
         then (process-insns (assoc context
-                                   :code (take-while (index< target) code)))
+                                   :code (take-while (index< target) code)
+                                   :statement nil))
         end (:goto-target then)
         rest-code (drop-while (index< target) code)
         else (process-insns (assoc context
                                    :code (if end
                                            (take-while (index< end) rest-code)
-                                           rest-code)))
+                                           rest-code)
+                                   :statement nil))
         expr (if (and (true? (-> then :return :value))
                       (false? (-> else :return :value)))
                ; not a real if, just boolean boxing
@@ -314,7 +316,6 @@
         expr {:type :invoke-static
               :class (.getClassName insn pool)
               :method (.getMethodName insn pool)
-              :preceding-statement statement
               :args args}
         expr (condp #(%1 %2) method-name
                #{"clojure.lang.RT/var"}
@@ -327,7 +328,6 @@
                 :value @(-> args first :values)}
                inline-fns
                {:type :invoke
-                :preceding-statement statement
                 :ns 'clojure.core
                 :name (inline-fns method-name)
                 :args args
@@ -335,7 +335,6 @@
                #{"clojure.lang.Util/identical"}
                (let [variant (-> args second (:value :not-there) identical?-variants)]
                  {:type :invoke
-                  :preceding-statement statement
                   :ns 'clojure.core
                   :name (or variant 'identical?)
                   :args (if variant [(first args)] args)})
@@ -359,7 +358,6 @@
                           (= (:method for-name-expr) "forName")
                           (= (-> for-name-expr :args first :type) :const))
                    {:type :invoke-ctor
-                    :preceding-statement statement
                     :args @(-> args second :values)
                     :class (-> for-name-expr :args first :value)}
                    expr))
@@ -367,7 +365,6 @@
                (let [method-or-field (second args)]
                  (if (= (:type method-or-field) :const)
                    {:type :invoke-member
-                    :preceding-statement statement
                     :args [(first args)]
                     :member (:value method-or-field)}
                    expr))
@@ -375,14 +372,17 @@
                (let [method-name-expr (second args)]
                  (if (= (:type method-name-expr) :const)
                    {:type :invoke-member
-                    :preceding-statement statement
                     :args (cons (first args) @(-> args (nth 2) :values))
                     :member (:value method-name-expr)}
                    expr))
+               expr)
+        is-invoke (.startsWith (name (:type expr)) "invoke")
+        expr (if is-invoke
+               (assoc expr :preceding-statement statement)
                expr)]
     (assoc context
            :stack (conj (pop-n stack argc) expr)
-           :statement nil)))
+           :statement (if is-invoke nil statement))))
 
 (defmethod process-insn GETFIELD
   [_ insn {:keys [stack pool] :as context}]
@@ -470,37 +470,52 @@
                        context)]
     (process-insns context)))
 
+(defn statement-chain [expr]
+  (loop [expr expr
+         chain nil]
+    (if-let [preceding (:preceding-statement expr)]
+      (recur preceding (cons expr chain))
+      (cons expr chain))))
+
 (defn render-expr [expr fn-args]
-  ((fn render [expr]
-     (let [args (map render (:args expr ()))
-           local-name #(symbol (str "local" (- (:index %) (count fn-args))))
-           render-binding (fn [sym expr]
-                            (list sym (vec (interleave
-                                             (map local-name (:locals expr))
-                                             (map #(render (:initial %)) (:locals expr))))
-                                  (render (:body expr))))] ; TODO more exprs form `do`
-       (condp = (:type expr)
-         :const (:value expr)
-         :const-coll ((:ctor expr) (map render (:value expr)))
-         :invoke (list* (:name expr) args)
-         :invoke-static (list* (symbol (str (:class expr) \/ (:method expr))) args)
-         :invoke-ctor (list* (symbol (str (:class expr) \.)) args)
-         :invoke-member (list* (symbol (str \. (:member expr))) args)
-         :recur (list* 'recur (map render @(:args expr)))
-         :get-field (symbol (str (:class expr) \/ (:field expr)))
-         :let (render-binding 'let expr)
-         :loop (render-binding 'loop expr)
-         :local (if-let [assign (:assign expr)] (render assign) (local-name expr))
-         :if (let [c (render (:cond expr))
-                   t (render (:then expr))
-                   f (render (:else expr))]
-               (if (nil? f)
-                 (list 'if c t)
-                 (list 'if c t f)))
-         :arg (if-let [assign (:assign expr)]
-                (render assign)
-                (symbol (str "arg" (:index expr)))))))
-   expr))
+  (letfn
+    [(render-single [expr]
+       (let [args (map render-chain-do (:args expr ()))
+             local-name #(symbol (str "local" (- (:index %) (count fn-args))))
+             render-binding (fn [sym expr]
+                              (list* sym (vec (interleave
+                                                (map local-name (:locals expr))
+                                                (map #(render-chain-do (:initial %)) (:locals expr))))
+                                     (render-chain (:body expr))))] ; TODO more exprs form `do`
+         (condp = (:type expr)
+           :const (:value expr)
+           :const-coll ((:ctor expr) (map render-chain-do (:value expr)))
+           :invoke (list* (:name expr) args)
+           :invoke-static (list* (symbol (str (:class expr) \/ (:method expr))) args)
+           :invoke-ctor (list* (symbol (str (:class expr) \.)) args)
+           :invoke-member (list* (symbol (str \. (:member expr))) args)
+           :recur (list* 'recur (map render-chain-do @(:args expr)))
+           :get-field (symbol (str (:class expr) \/ (:field expr)))
+           :let (render-binding 'let expr)
+           :loop (render-binding 'loop expr)
+           :local (if-let [assign (:assign expr)] (render-chain-do assign) (local-name expr))
+           :if (let [c (render-chain-do (:cond expr))
+                     t (render-chain-do (:then expr))
+                     f (render-chain-do (:else expr))]
+                 (if (nil? f)
+                   (list 'if c t)
+                   (list 'if c t f)))
+           :arg (if-let [assign (:assign expr)]
+                  (render-chain-do assign)
+                  (symbol (str "arg" (:index expr)))))))
+     (render-chain [expr]
+       (map render-single (statement-chain expr)))
+     (render-chain-do [expr]
+       (let [chain (statement-chain expr)]
+         (if (> (count chain) 1)
+           (list* 'do (map render-single chain))
+           (render-single (peek chain)))))]
+    (render-chain expr)))
 
 (defn decompile-fn [clazz]
   (let [[fn-ns fn-name] (map demunge (string/split (.getClassName clazz) #"\$" 2))
@@ -508,12 +523,11 @@
         fields (:fields (method->expr clazz clinit))
         invoke (find-method clazz "invoke") ;TODO multiple arities
         return (:return (method->expr clazz invoke :fields fields))
-        body [return] ; TODO
         argc (count (.getArgumentTypes invoke))
         args (mapv #(symbol (str "arg" %)) (range 1 (inc argc)))
         _ (when *debug* (pprint return))]
     (list* 'defn (symbol fn-name) args
-           (map #(render-expr % args) body))))
+           (render-expr return args))))
 
 (defn decompile-class [clazz]
   "Decompiles single class file"
