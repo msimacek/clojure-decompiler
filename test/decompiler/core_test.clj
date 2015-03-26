@@ -109,6 +109,8 @@
   (defn test-fn [] (.x (java.awt.Point. 1 2))))
 (deftest-decompile call-virtual
   (defn test-fn [] (.toString (java.awt.Point. 1 2))))
+(deftest-decompile call-virtual-void
+  (defn test-fn [] (.println java.lang.System/out "bbb")))
 
 ; test that inlined functions are converted to their clojure form
 (defmacro deftest-inline [sym arity]
@@ -208,11 +210,11 @@
   (defn test-fn [arg1]
     (println 0)
     (println arg1)))
-; (deftest-decompile even-more-statements
-;   (defn test-fn [arg1]
-;     (println 0)
-;     (.println java.lang.System/out "bbb")
-;     (println arg1)))
+(deftest-decompile even-more-statements
+  (defn test-fn [arg1]
+    (println 0)
+    (.println java.lang.System/out "bbb")
+    (println arg1)))
 (deftest-decompile do-in-expression
   (defn test-fn [arg1]
     (str (inc arg1) (do (println arg1) (dec arg1)))))

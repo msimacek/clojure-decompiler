@@ -424,27 +424,37 @@
            :stack (conj (pop-n stack (+ argc 2)) expr)
            :statement nil)))
 
+(defn generic-invoke-expr
+  [insn expr {:keys [stack pool statement code] :as context}]
+    (let [argc (-> expr :args count)
+          return-type (.getReturnType insn pool)
+          is-void (= return-type Type/VOID)
+          expr (assoc expr
+                      :preceding-statement statement
+                      :return-type return-type)]
+      (assoc context
+             :stack (conj (pop-n stack argc) expr)
+             :statement nil
+             :code (if is-void (rest code) code)))) ; get rid of aconst_null, store this as expression
+
 (defmethod process-insn INVOKEVIRTUAL
-  [_ insn {:keys [stack pool statement] :as context}]
+  [_ insn {:keys [stack pool statement code] :as context}]
   (if (= (insn-method insn pool) "clojure.lang.Var/getRawRoot")
     context
     (let [arg-types (.getArgumentTypes insn pool)
           argc (count arg-types)
           args (cons (peek-at stack argc) (peek-n stack argc))
           expr {:type :invoke-member
-                :preceding-statement statement
                 :args (eliminate-arg-casts args (cons Type/OBJECT arg-types))
                 :member (.getMethodName insn pool)}]
-      (assoc context
-             :stack (conj (pop-n stack (+ argc 1)) expr)
-             :statement nil))))
+      (generic-invoke-expr insn expr context))))
 
 (defmethod process-insn PopInstruction
   [_ insn {:keys [stack statement] :as context}]
   (assert (not statement)) ; all statements should have been picked up by invokes
   (assoc context
          :stack (pop stack)
-         :statement (peek stack)))
+         :statement (if (-> stack peek :type (= :const)) nil (peek stack))))
 
 (defmethod process-insn ARETURN
   [_ insn {:keys [stack] :as context}]
