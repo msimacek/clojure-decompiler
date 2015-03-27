@@ -292,7 +292,7 @@
 
 (defn eliminate-cast [expr target-type]
   (if (and (= (:type expr) :invoke)
-           (casts (:name expr))
+           (-> expr :fn-expr :name casts)
            (= (:return-type expr) target-type))
     (-> expr :args first)
     expr))
@@ -344,15 +344,17 @@
                 :value @(-> args first :values)}
                inline-fns
                {:type :invoke
-                :ns 'clojure.core
-                :name (inline-fns method-name)
+                :fn-expr {:type :var
+                          :ns 'clojure.core
+                          :name (inline-fns method-name)}
                 :args args
                 :return-type (.getReturnType insn pool)}
                #{"clojure.lang.Util/identical"}
                (let [variant (-> args second (:value :not-there) identical?-variants)]
                  {:type :invoke
-                  :ns 'clojure.core
-                  :name (or variant 'identical?)
+                  :fn-expr {:type :var
+                            :ns 'clojure.core
+                            :name  (or variant 'identical?)}
                   :args (if variant [(first args)] args)})
                boxing
                ; We want to skip cast elimination. If there was a cast, it was
@@ -367,8 +369,9 @@
                 :value (keyword (-> args first :value) (-> args second :value))}
                #{"clojure.lang.Symbol/intern"}
                {:type :invoke
-                :ns 'clojure.core
-                :name 'quote
+                :fn-expr {:type :var
+                          :ns 'clojure.core
+                          :name 'quote}
                 :args [{:type :const
                         :value (symbol (-> args first :value) (-> args second :value))}]}
                #{"clojure.lang.RT/readString"}
@@ -427,7 +430,7 @@
         expr {:type :invoke
               :preceding-statement statement
               :args args
-              :name (:name (peek-at stack argc))}]
+              :fn-expr (peek-at stack argc)}]
     (assoc context
            :stack (conj (pop-n stack (inc argc)) expr)
            :statement nil)))
@@ -538,7 +541,7 @@
          (condp = (:type expr)
            :const (:value expr)
            :const-coll ((:ctor expr) (map render-chain-do (:value expr)))
-           :invoke (list* (:name expr) args)
+           :invoke (list* (render-chain-do (:fn-expr expr)) args)
            :invoke-static (list* (symbol (str (:class expr) \/ (:method expr))) args)
            :invoke-ctor (if-let [func (fn-map (:class expr))]
                           (let [args (fn-arg-syms func)]

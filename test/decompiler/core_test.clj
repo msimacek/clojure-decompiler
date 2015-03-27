@@ -257,6 +257,16 @@
 (deftest-decompile return-function
   (defn test-fn [arg1]
     (fn [] arg1)))
+(deftest-decompile return-function2
+  (defn test-fn [foo]
+    (fn [x] (+ foo x))))
+(deftest-decompile local-function
+  (defn test-fn [foo]
+    (let [local1 (fn [x] (+ foo x))]
+      (local1 3))))
+(deftest-decompile call-fn
+  (defn test-fn [foo]
+    ((fn [bar] (inc bar) foo))))
 
 (deftest-decompile toplevel
   (println "Hello"))
