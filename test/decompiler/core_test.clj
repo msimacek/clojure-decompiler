@@ -242,3 +242,10 @@
 
 (deftest-decompile toplevel
   (println "Hello"))
+(deftest-decompile toplevel-def
+  (def some-string "私はかわいい猫です"))
+(deftest-decompile toplevel-def-expr
+  (def important-number (inc 41)))
+(deftest-decompile toplevel-more
+  [(def some-string "私はかわいい猫です")
+   (def important-number (inc 41))])

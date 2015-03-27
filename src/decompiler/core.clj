@@ -306,7 +306,7 @@
   (let [return-type (.getReturnType insn pool)
         is-void (= return-type Type/VOID)
         expr (assoc expr
-                    :preceding-statement statement
+                    :preceding-statement (:preceding-statement expr statement)
                     :return-type return-type)]
     (assoc context
            :stack (conj (pop-n stack argc) expr)
@@ -449,8 +449,8 @@
     "clojure.lang.Var/bindRoot"
     (let [expr {:type :def
                 :var (peek-at stack 1)
-                :value (peek stack)
-                :preceding-statement statement}]
+                :value (-> stack peek (dissoc :preceding-statement))
+                :preceding-statement (-> stack peek :preceding-statement)}]
       (assoc context
              :stack (pop-n stack 2)
              :statement expr))
