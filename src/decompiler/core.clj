@@ -444,6 +444,8 @@
   (condp = (insn-method insn pool)
     "clojure.lang.Var/getRawRoot"
     context
+    "clojure.lang.Var/get"
+    context
     "clojure.lang.Var/setMeta"
     (assoc context :stack (pop-n stack 2)) ; TODO metadata
     "clojure.lang.Var/bindRoot"
@@ -541,6 +543,7 @@
            :let (render-binding 'let expr)
            :loop (render-binding 'loop expr)
            :local (if-let [assign (:assign expr)] (render-chain-do assign) (local-name expr))
+           :var (:name expr)
            :if (let [c (render-chain-do (:cond expr))
                      t (render-chain-do (:then expr))
                      f (render-chain-do (:else expr))]

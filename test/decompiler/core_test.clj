@@ -83,6 +83,10 @@
   (defn test-fn [] #{1 2 (str 3)}))
 (deftest-decompile return-map
   (defn test-fn [] {:live 4 :ever (str \!)}))
+(deftest-decompile return-global
+  (defn test-fn [] cons))
+(deftest-decompile return-global-dynamic
+  (defn test-fn [] *command-line-args*))
 
 (deftest-decompile simple-clj-call
   (defn test-fn [] (println "Hello")))
