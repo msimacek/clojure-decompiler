@@ -16,7 +16,7 @@
       (with-open [rdr (StringReader. (apply str code))]
         (Compiler/compile rdr "test_code.clj" "TEST_SOURCE")))
     (if *debug* (println))
-    (vec (decompile-classes [(str dir)]))))
+    (vec (do-decompile [(str dir)]))))
 
 (defn typed-equals [x y]
   (and (or (= (class x) (class y))
@@ -32,7 +32,7 @@
 
 (defmacro deftest-decompile
   ([test-name code]
-   (deftest-decompile &form &env test-name code code))
+   `(deftest-decompile ~test-name ~code ~code))
   ([test-name code expected-code]
    (let [to-code #(if (vector? %) % [%])
          code (to-code code)
@@ -239,3 +239,6 @@
     (loop [local1 (inc arg1)]
       (println local1)
       (if local1 (recur (dec local1))))))
+
+(deftest-decompile toplevel
+  (println "Hello"))

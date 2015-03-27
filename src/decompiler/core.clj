@@ -303,15 +303,15 @@
 
 (defn generic-invoke-expr
   [insn expr argc {:keys [stack pool statement code] :as context}]
-    (let [return-type (.getReturnType insn pool)
-          is-void (= return-type Type/VOID)
-          expr (assoc expr
-                      :preceding-statement statement
-                      :return-type return-type)]
-      (assoc context
-             :stack (conj (pop-n stack argc) expr)
-             :statement nil
-             :code (if is-void (rest code) code)))) ; get rid of aconst_null, store this as expression
+  (let [return-type (.getReturnType insn pool)
+        is-void (= return-type Type/VOID)
+        expr (assoc expr
+                    :preceding-statement statement
+                    :return-type return-type)]
+    (assoc context
+           :stack (conj (pop-n stack argc) expr)
+           :statement nil
+           :code (if is-void (rest code) code)))) ; get rid of aconst_null, store this as expression
 
 (defmethod process-insn INVOKESTATIC
   [_ insn {:keys [stack pool statement] :as context}]
@@ -440,9 +440,20 @@
            :statement nil)))
 
 (defmethod process-insn INVOKEVIRTUAL
-  [_ insn {:keys [stack pool statement code] :as context}]
-  (if (= (insn-method insn pool) "clojure.lang.Var/getRawRoot")
+  [_ insn {:keys [stack pool statement] :as context}]
+  (condp = (insn-method insn pool)
+    "clojure.lang.Var/getRawRoot"
     context
+    "clojure.lang.Var/setMeta"
+    (assoc context :stack (pop-n stack 2)) ; TODO metadata
+    "clojure.lang.Var/bindRoot"
+    (let [expr {:type :def
+                :var (peek-at stack 1)
+                :value (peek stack)
+                :preceding-statement statement}]
+      (assoc context
+             :stack (pop-n stack 2)
+             :statement expr))
     (let [arg-types (.getArgumentTypes insn pool)
           argc (count arg-types)
           args (cons (peek-at stack argc) (peek-n stack argc))
@@ -464,6 +475,13 @@
          :code nil
          :stack (pop stack)
          :return (peek stack)))
+
+(defmethod process-insn RETURN
+  [_ insn {:keys [stack statement] :as context}]
+  (assoc context
+         :code nil
+         :statement nil
+         :return statement))
 
 (defn get-indexed-insns [method]
   (let [insns (get-insns method)]
@@ -489,7 +507,10 @@
       (recur preceding (cons expr chain))
       (cons expr chain))))
 
-(defn render-expr [expr fn-args]
+(defn fn-arg-syms [function]
+  (mapv #(symbol (str "arg" %)) (range 1 (inc (:arg-count function)))))
+
+(defn render-expr [expr fn-map fn-args]
   (letfn
     [(render-single [expr]
        (let [args (map render-chain-do (:args expr ()))
@@ -504,7 +525,16 @@
            :const-coll ((:ctor expr) (map render-chain-do (:value expr)))
            :invoke (list* (:name expr) args)
            :invoke-static (list* (symbol (str (:class expr) \/ (:method expr))) args)
-           :invoke-ctor (list* (symbol (str (:class expr) \.)) args)
+           :invoke-ctor (if-let [func (fn-map (:class expr))]
+                          (let [args (fn-arg-syms func)]
+                            (list* 'fn args (render-expr (:body func) fn-map args)))
+                          (list* (symbol (str (:class expr) \.)) args))
+           :def (let [sym (-> expr :var :name)]
+                  (if-let [func (and (-> expr :value :type (= :invoke-ctor))
+                                     (fn-map (-> expr :value :class)))]
+                    (let [args (fn-arg-syms func)]
+                      (list* 'defn sym args (render-expr (:body func) fn-map args)))
+                    (list 'def sym (render-chain-do (:value expr)))))
            :invoke-member (list* (symbol (str \. (:member expr))) args)
            :recur (list* 'recur (map render-chain-do @(:args expr)))
            :get-field (symbol (str (:class expr) \/ (:field expr)))
@@ -519,7 +549,8 @@
                    (list 'if c t f)))
            :arg (if-let [assign (:assign expr)]
                   (render-chain-do assign)
-                  (symbol (str "arg" (:index expr)))))))
+                  (symbol (str "arg" (:index expr))))
+           (throw (IllegalArgumentException. (str "Cannot render: " expr))))))
      (render-chain [expr]
        (map render-single (statement-chain expr)))
      (render-chain-do [expr]
@@ -536,30 +567,55 @@
         invoke (find-method clazz "invoke") ;TODO multiple arities
         return (:return (method->expr clazz invoke :fields fields))
         argc (count (.getArgumentTypes invoke))
-        args (mapv #(symbol (str "arg" %)) (range 1 (inc argc)))
+        ; args (mapv #(symbol (str "arg" %)) (range 1 (inc argc)))
         _ (when *debug* (pprint return))]
-    (list* 'defn (symbol fn-name) args
-           (render-expr return args))))
+    ; (list* 'defn (symbol fn-name) args
+    ;        (render-expr return args))))
+    {:type :fn
+     :class-name (.getClassName clazz)
+     :arg-count argc
+     :ns fn-ns
+     :name fn-name
+     :body return}))
+
+(defn decompile-init [clazz]
+  (let [inits (filter #(.startsWith (.getName %) "__init") (.getMethods clazz))
+        fields (reduce #(:fields (method->expr clazz %2 :fields %1)) (cons nil inits))
+        load-method (method->expr clazz (find-method clazz "load") :fields fields)]
+    {:type :init
+     :body (:return load-method)}))
 
 (defn decompile-class [clazz]
   "Decompiles single class file"
   (cond
     (= (.getSuperclassName clazz) "clojure.lang.AFunction")
-    (decompile-fn clazz)))
+    (decompile-fn clazz)
+    (= (.endsWith (.getClassName clazz) "__init"))
+    (decompile-init clazz)))
 
 (defn get-classes [files]
   "Returns file paths as BCEL's JavaClasses"
   (map #(.parse (ClassParser. %)) files))
 
-(defn decompile-classes [paths]
-  "Decopmiles all class files at given paths. Recurses into directories"
+(defn get-classes-from-paths [paths]
   (->> paths
        (mapcat #(file-seq (io/file %)))
        (map str)
        (filter #(.endsWith % ".class"))
-       (get-classes)
-       (keep decompile-class)))
+       (get-classes)))
+
+(defn decompile-classes [paths]
+  "Decopmiles all class files at given paths. Recurses into directories"
+  (keep decompile-class (get-classes-from-paths paths)))
+
+(defn render-classes [classes]
+  (let [fn-map (into {} (keep #(if (= (:type %) :fn) [(:class-name %) %]) classes))
+        init (first (filter #(= (:type %) :init) classes))]
+    (render-expr (:body init) fn-map [])))
+
+(defn do-decompile [paths]
+  (render-classes (decompile-classes paths)))
 
 (defn -main [& paths]
   "Entry point. Decompiles class files given as commandline arguments"
-  (println (apply str (decompile-classes paths))))
+  (println (apply str (render-classes (decompile-classes paths)))))
