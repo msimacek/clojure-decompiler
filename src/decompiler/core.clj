@@ -627,4 +627,4 @@
 
 (defn -main [& paths]
   "Entry point. Decompiles class files given as commandline arguments"
-  (println (apply str (render-classes (decompile-classes paths)))))
+  (dorun (map pprint (render-classes (decompile-classes paths)))))
