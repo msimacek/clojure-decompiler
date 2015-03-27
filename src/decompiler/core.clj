@@ -76,8 +76,8 @@
                condition
                ; real if
                {:type :if
-                :cond condition
-                :preceding-statement statement
+                :cond (dissoc condition :preceding-statement)
+                :preceding-statement (:preceding-statement condition statement)
                 :else (:return else)
                 :then (:return then)})]
     (assoc context

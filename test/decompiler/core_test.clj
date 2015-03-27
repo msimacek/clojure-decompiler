@@ -245,6 +245,10 @@
     (loop [local1 (inc arg1)]
       (println local1)
       (if local1 (recur (dec local1))))))
+(deftest-decompile multiple-statements-before-if
+  (defn test-fn [arg1]
+    (inc (do (println "haha")
+           (if (nil? arg1) 1 2)))))
 
 (deftest-decompile toplevel
   (println "Hello"))
