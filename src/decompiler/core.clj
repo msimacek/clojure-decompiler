@@ -365,6 +365,12 @@
                #{"clojure.lang.RT/keyword"}
                {:type :const
                 :value (keyword (-> args first :value) (-> args second :value))}
+               #{"clojure.lang.Symbol/intern"}
+               {:type :invoke
+                :ns 'clojure.core
+                :name 'quote
+                :args [{:type :const
+                        :value (symbol (-> args first :value) (-> args second :value))}]}
                #{"clojure.lang.RT/readString"}
                {:type :const
                 :value (clojure.lang.RT/readString (-> args first :value))}

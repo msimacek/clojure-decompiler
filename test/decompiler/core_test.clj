@@ -66,6 +66,8 @@
 (deftest-decompile return-keyword-ns
   ; TODO this will print it as :decompiler.core-test/lol
   (defn test-fn [] ::lol))
+(deftest-decompile return-symbol
+  (defn test-fn [] 'lol))
 (deftest-decompile return-empty-list
   (defn test-fn [] ()))
 (deftest-decompile return-empty-vector
