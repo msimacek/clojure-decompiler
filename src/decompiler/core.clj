@@ -407,10 +407,17 @@
 
 (defmethod process-insn GETFIELD
   [_ insn {:keys [stack pool] :as context}]
-  (assoc context
-         :stack (conj (pop stack) {:type :invoke-member
-                                   :args [(peek stack)]
-                                   :member (.getFieldName insn pool)})))
+  (let [top (peek stack)
+        field-name (.getFieldName insn pool)
+        expr (if (and (= (:type top) :arg)
+                      (zero? (:index top)))
+               {:type :arg
+                :name field-name}
+               {:type :invoke-member
+                :args [top]
+                :member field-name})]
+    (assoc context
+           :stack (conj (pop stack) expr))))
 
 (defmethod process-insn INVOKEINTERFACE
   [_ insn {:keys [stack pool statement] :as context}]
@@ -558,7 +565,7 @@
                    (list 'if c t f)))
            :arg (if-let [assign (:assign expr)]
                   (render-chain-do assign)
-                  (symbol (str "arg" (:index expr))))
+                  (symbol (:name expr (str "arg" (:index expr)))))
            (throw (IllegalArgumentException. (str "Cannot render: " expr))))))
      (render-chain [expr]
        (map render-single (statement-chain expr)))

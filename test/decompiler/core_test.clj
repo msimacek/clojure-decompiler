@@ -250,6 +250,10 @@
     (inc (do (println "haha")
            (if (nil? arg1) 1 2)))))
 
+(deftest-decompile return-function
+  (defn test-fn [arg1]
+    (fn [] arg1)))
+
 (deftest-decompile toplevel
   (println "Hello"))
 (deftest-decompile toplevel-multiple
