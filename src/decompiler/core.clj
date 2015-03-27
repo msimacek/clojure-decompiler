@@ -523,7 +523,7 @@
       (cons expr chain))))
 
 (defn fn-arg-syms [function]
-  (mapv #(symbol (str "arg" %)) (range 1 (inc (:arg-count function)))))
+  (mapv #(symbol (.getName %)) (:args function)))
 
 (defn render-expr [expr fn-map fn-args]
   (letfn
@@ -565,7 +565,7 @@
                    (list 'if c t f)))
            :arg (if-let [assign (:assign expr)]
                   (render-chain-do assign)
-                  (symbol (:name expr (str "arg" (:index expr)))))
+                  (symbol (or (:name expr) (fn-args (dec (:index expr))))))
            (throw (IllegalArgumentException. (str "Cannot render: " expr))))))
      (render-chain [expr]
        (map render-single (statement-chain expr)))
@@ -583,13 +583,12 @@
         invoke (find-method clazz "invoke") ;TODO multiple arities
         return (:return (method->expr clazz invoke :fields fields))
         argc (count (.getArgumentTypes invoke))
-        ; args (mapv #(symbol (str "arg" %)) (range 1 (inc argc)))
+        var-table (-> invoke .getLocalVariableTable .getLocalVariableTable)
         _ (when *debug* (pprint return))]
-    ; (list* 'defn (symbol fn-name) args
-    ;        (render-expr return args))))
     {:type :fn
      :class-name (.getClassName clazz)
      :arg-count argc
+     :args (filter #(<= 1 (.getIndex %) argc) var-table)
      :ns fn-ns
      :name fn-name
      :body return}))

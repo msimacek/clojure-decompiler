@@ -250,6 +250,10 @@
     (inc (do (println "haha")
            (if (nil? arg1) 1 2)))))
 
+(deftest-decompile argument-names
+  (defn test-fn [x y]
+    (+ x y)))
+
 (deftest-decompile return-function
   (defn test-fn [arg1]
     (fn [] arg1)))
