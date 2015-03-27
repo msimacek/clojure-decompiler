@@ -252,6 +252,10 @@
 
 (deftest-decompile toplevel
   (println "Hello"))
+(deftest-decompile toplevel-multiple
+  [(println "Hello")
+   (println (str "World") (do (println \!) (str "")))
+   (println "猫耳着け")])
 (deftest-decompile toplevel-def
   (def some-string "私はかわいい猫です"))
 (deftest-decompile toplevel-def-expr

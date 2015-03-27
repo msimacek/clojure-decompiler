@@ -590,9 +590,15 @@
 (defn decompile-init [clazz]
   (let [inits (filter #(.startsWith (.getName %) "__init") (.getMethods clazz))
         fields (reduce #(:fields (method->expr clazz %2 :fields %1)) (cons nil inits))
-        load-method (method->expr clazz (find-method clazz "load") :fields fields)]
+        statement-types #{:invoke :invoke-static :invoke-ctor :invoke-member
+                          :def :if :let :loop}
+        load-method (method->expr clazz (find-method clazz "load") :fields fields)
+        ; FIXME this looks kinda arbitrary
+        body (if (identical? (-> load-method :stack peek) (-> load-method :return))
+               (:stack load-method)
+               (cons (:return load-method) (:stack load-method)))]
     {:type :init
-     :body (:return load-method)}))
+     :body (filter #(statement-types (:type %)) body)}))
 
 (defn decompile-class [clazz]
   "Decompiles single class file"
@@ -620,7 +626,7 @@
 (defn render-classes [classes]
   (let [fn-map (into {} (keep #(if (= (:type %) :fn) [(:class-name %) %]) classes))
         init (first (filter #(= (:type %) :init) classes))]
-    (render-expr (:body init) fn-map [])))
+    (mapcat #(render-expr % fn-map []) (:body init))))
 
 (defn do-decompile [paths]
   (render-classes (decompile-classes paths)))
