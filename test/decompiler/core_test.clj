@@ -184,6 +184,12 @@
   (defn test-fn [arg1 arg2] (if (== (long arg1) (long arg2)) (inc arg1) arg1)))
 (deftest-decompile if-primitive-predicate3
   (defn test-fn [arg1 arg2] (if (= (boolean arg1) (boolean arg2)) (inc arg1) arg1)))
+(deftest-decompile if-primitive-predicate-zero
+  (defn test-fn [arg1 arg2] (if (zero? (long arg2)) (inc arg1) arg1)))
+(deftest-decompile if-primitive-predicate-pos
+  (defn test-fn [arg1 arg2] (if (pos? (int arg2)) (inc arg1) arg1)))
+(deftest-decompile if-primitive-predicate-neq
+  (defn test-fn [arg1 arg2] (if (neg? (long arg2)) (inc arg1) arg1)))
 
 (deftest-decompile simple-let
   (defn test-fn [arg1 arg2] (let [local1 (str arg1 arg1)] local1)))

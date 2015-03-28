@@ -117,6 +117,14 @@
    [DCMPL IFLT] '>=
    [DCMPL IFNE] '==})
 
+(def predicate-insns-unary
+  {[DCMPL IFNE] 'zero?
+   [LCMP IFNE] 'zero?
+   [LCMP IFLE] 'pos?
+   [DCMPL IFLE] 'pos?
+   [LCMP IFGE] 'neg?
+   [DCMPG IFGE] 'neg?})
+
 (derive LCMP ::number-predicate)
 (derive DCMPL ::number-predicate)
 (derive DCMPG ::number-predicate)
@@ -124,10 +132,15 @@
 (defmethod process-insn ::number-predicate
   [index insn {:keys [code stack] :as context}]
   (let [[[comp-index comp-insn] & code] code
+        insn-types [(class insn) (class comp-insn)]
+        unary-predicate (and (-> stack peek :value (= 0))
+                             (predicate-insns-unary insn-types nil))
+        predicate (or unary-predicate
+                      (predicate-insns insn-types))
         condition {:type :invoke
-                   :args (peek-n stack 2)
+                   :args (if unary-predicate [(peek-at stack 1)] (peek-n stack 2))
                    :fn-expr {:type :var
-                             :name (predicate-insns [(class insn) (class comp-insn)])}}]
+                             :name predicate}}]
         (process-if condition
                     (+ comp-index (.getIndex comp-insn))
                     (assoc context :stack (pop-n stack 2)))))
