@@ -334,6 +334,13 @@
   (defn test-fn
     ([foo] (inc foo))
     ([foo bar] (+ foo bar))))
+(deftest-decompile variadic
+  (defn test-fn [a & args]
+    (map (fn [x] (* a x)) args)))
+(deftest-decompile variadic-multiple
+  (defn test-fn
+    ([a] (* a 2))
+    ([a & args] (map (fn [x] (* a x)) args))))
 
 (deftest-decompile toplevel
   (println "Hello"))

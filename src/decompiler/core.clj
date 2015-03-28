@@ -726,8 +726,12 @@
        (mapv #(symbol (.getName %)) args))
 
      (render-arity [arity fn-name]
-       (let [args (fn-arg-syms (:args arity))]
-         (cons args (render-expr (:body arity) fn-map (vec (cons fn-name args))))))
+       (let [args (fn-arg-syms (:args arity))
+             argspec (if-let [req (:required-arity arity)]
+                       (let [[left right] (split-at req args)]
+                         (vec (concat left ['&] right)))
+                       args)]
+         (cons argspec (render-expr (:body arity) fn-map (vec (cons fn-name args))))))
 
      (render-fn [sym func fn-name]
        (let [definition (map #(render-arity % fn-name) (:arities func))
@@ -746,9 +750,13 @@
 (defn decompile-invoke [clazz invoke fields]
   (let [return (:return (method->expr clazz invoke :fields fields))
         argc (count (.getArgumentTypes invoke))
+        required-arity (if (= (.getName invoke) "doInvoke")
+                         (-> (method->expr clazz (find-method clazz "getRequiredArity"))
+                             :return :value))
         var-table (-> invoke .getLocalVariableTable .getLocalVariableTable)]
     (when *debug* (pprint return))
     {:type :fn-single
+     :required-arity required-arity
      :args (filter #(<= 1 (.getIndex %) argc) var-table)
      :body return}))
 
@@ -758,13 +766,17 @@
         fn-name (demunge (string/replace (last name-parts) #"__\d+$" ""))
         clinit (find-method clazz "<clinit>")
         fields (:fields (method->expr clazz clinit))
-        invokes (find-methods clazz "invoke")]
+        invokes (find-methods clazz "invoke")
+        do-invoke (find-method clazz "doInvoke")
+        arities (vec (sort-by #(count (:args %))
+                              (map #(decompile-invoke clazz % fields) invokes)))]
     {:type :fn
      :class-name (.getClassName clazz)
      :ns fn-ns
      :name (if-not (= fn-name 'fn) fn-name)
-     :arities (sort-by #(count (:args %))
-                       (map #(decompile-invoke clazz % fields) invokes))}))
+     :arities (if do-invoke
+                (conj arities (decompile-invoke clazz do-invoke fields))
+                arities)}))
 
 (defn decompile-init [clazz]
   (let [inits (filter #(.startsWith (.getName %) "__init") (.getMethods clazz))
@@ -783,6 +795,8 @@
   "Decompiles single class file"
   (cond
     (= (.getSuperclassName clazz) "clojure.lang.AFunction")
+    (decompile-fn clazz)
+    (= (.getSuperclassName clazz) "clojure.lang.RestFn")
     (decompile-fn clazz)
     (= (.endsWith (.getClassName clazz) "__init"))
     (decompile-init clazz)))
