@@ -219,6 +219,10 @@
         ; this is technically correct
         (let [local2 (first local1)]
           (str local2 local1))))))
+(deftest-decompile let-names
+  (defn test-fn [x]
+    (let [a (first x)]
+      (inc a))))
 
 (deftest-decompile simple-loop
   (defn test-fn [arg1 arg2]

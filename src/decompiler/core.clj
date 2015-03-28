@@ -241,15 +241,23 @@
            :stack (pop stack)
            :fields (assoc fields (.getFieldName insn pool) (peek stack)))))
 
+(defn find-local-name
+  "Find name of local variable that started to be used at given instruction index"
+  [method index]
+  (let [table (-> method .getLocalVariableTable .getLocalVariableTable)
+        local (seq (filter #(= (.getStartPC %) index) table))]
+    (if local (-> local first .getName))))
+
 (defmethod process-insn StoreInstruction
-  [insn-index insn {:keys [stack vars statement] :as context}]
+  [insn-index insn {:keys [method stack vars statement] :as context}]
   (let [index (.getIndex insn)
         existing (nth vars index nil)
         local (if (#{:local :arg} (:type existing))
                 (assoc existing :assign (peek stack))
                 {:type :local
                  :initial (peek stack)
-                 :index index})
+                 :index index
+                 :name (find-local-name method (+ insn-index (.getLength insn)))})
         vars (if existing
                (assoc vars index local)
                (assoc* vars index local))
@@ -655,7 +663,8 @@
 (declare render-expr)
 (defn render-expr [expr fn-map fn-args]
   (letfn
-    [(local-name [expr] (symbol (str "local" (- (:index expr) (count fn-args) -1))))
+    [(local-name [expr] (symbol (or (:name expr)
+                                    (str "local" (- (:index expr) (count fn-args) -1)))))
      (render-single [expr]
        (let [args (map render-chain-do (:args expr ()))]
          (condp = (:type expr)
