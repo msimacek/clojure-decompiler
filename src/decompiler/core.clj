@@ -502,6 +502,18 @@
                     :args @(-> args second :values)
                     :class (-> for-name-expr :args first :value)}
                    expr))
+               #{"clojure.lang.Reflector/invokeStaticMethod"}
+               (let [for-name-expr (first args)
+                     method-name (second args)]
+                 (if (and (= (:class for-name-expr) "java.lang.Class")
+                          (= (:method for-name-expr) "forName")
+                          (= (-> for-name-expr :args first :type) :const)
+                          (= (:type method-name) :const))
+                   {:type :invoke-static
+                    :method (:value method-name)
+                    :args @(-> args (nth 2) :values)
+                    :class (-> for-name-expr :args first :value)}
+                   expr))
                #{"clojure.lang.Reflector/invokeNoArgInstanceMember"}
                (let [method-or-field (second args)]
                  (if (= (:type method-or-field) :const)
