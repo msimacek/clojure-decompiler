@@ -363,8 +363,10 @@
                ; again for no reason
                (peek stack)
                #{"java.lang.Character/valueOf"}
-               {:type :const
-                :value (-> args first :value char)}
+               (if (-> args first :type (= :const))
+                 {:type :const
+                  :value (-> args first :value char)}
+                 (peek stack))
                #{"clojure.lang.RT/keyword"}
                {:type :const
                 :value (keyword (-> args first :value) (-> args second :value))}

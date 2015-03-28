@@ -143,6 +143,15 @@
                      unsigned-bit-shift-right get])
 (gen-inline-tests 3 [get])
 
+(deftest-decompile return-cast-char
+  (defn test-fn [x] (char (+ 97 x))))
+(deftest-decompile return-cast-int
+  (defn test-fn [x] (int (/ 2 x))))
+(deftest-decompile return-cast-keyword
+  (defn test-fn [x] (keyword (str x))))
+(deftest-decompile return-cast-symbol
+  (defn test-fn [x] (symbol (str x))))
+
 (deftest-decompile unconditional-recur-arg
   (defn test-fn [arg1] (recur arg1)))
 (deftest-decompile unconditional-recur-expr
