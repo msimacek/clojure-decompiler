@@ -26,8 +26,11 @@
                              (assoc coll n item)
                              (recur (conj coll nil) n item)))
 
+(defn find-methods [clazz method]
+  (filter #(= (.getName %) method) (.getMethods clazz)))
+
 (defn find-method [clazz method]
-  (first (filter #(= (.getName %) method) (.getMethods clazz))))
+  (first (find-methods clazz method)))
 
 (defn get-insns [method]
   (-> method .getCode .getCode InstructionList. .getInstructions))
@@ -685,12 +688,12 @@
            :invoke (list* (render-chain-do (:fn-expr expr)) args)
            :invoke-static (list* (symbol (str (:class expr) \/ (:method expr))) args)
            :invoke-ctor (if-let [func (fn-map (:class expr))]
-                          (render-fn 'fn fn-map func (if-not (:local-name expr) (:name func)))
+                          (render-fn 'fn func (if-not (:local-name expr) (:name func)))
                           (list* (symbol (str (:class expr) \.)) args))
            :def (let [sym (-> expr :var :name)]
                   (if-let [func (and (-> expr :value :type (= :invoke-ctor))
                                      (fn-map (-> expr :value :class)))]
-                    (render-fn 'defn fn-map func sym)
+                    (render-fn 'defn func sym)
                     (list 'def sym (render-chain-do (:value expr)))))
            :invoke-member (list* (symbol (str \. (:member expr))) args)
            :recur (list* 'recur (map render-chain-do @(:args expr)))
@@ -719,12 +722,16 @@
                                    (:locals expr) local-names)))
                 (render-chain (:body expr)))))
 
-     (fn-arg-syms [function]
-       (mapv #(symbol (.getName %)) (:args function)))
+     (fn-arg-syms [args]
+       (mapv #(symbol (.getName %)) args))
 
-     (render-fn [sym fn-map func fn-name]
-       (let [args (fn-arg-syms func)
-             definition (cons args (render-expr (:body func) fn-map (vec (cons fn-name args))))]
+     (render-arity [arity fn-name]
+       (let [args (fn-arg-syms (:args arity))]
+         (cons args (render-expr (:body arity) fn-map (vec (cons fn-name args))))))
+
+     (render-fn [sym func fn-name]
+       (let [definition (map #(render-arity % fn-name) (:arities func))
+             definition (if (= (count definition) 1) (first definition) definition)]
          (cons sym (if fn-name (cons fn-name definition) definition))))
 
      (render-chain [expr]
@@ -736,24 +743,28 @@
            (render-single (peek chain)))))]
     (render-chain expr)))
 
+(defn decompile-invoke [clazz invoke fields]
+  (let [return (:return (method->expr clazz invoke :fields fields))
+        argc (count (.getArgumentTypes invoke))
+        var-table (-> invoke .getLocalVariableTable .getLocalVariableTable)]
+    (when *debug* (pprint return))
+    {:type :fn-single
+     :args (filter #(<= 1 (.getIndex %) argc) var-table)
+     :body return}))
+
 (defn decompile-fn [clazz]
   (let [name-parts (string/split (.getClassName clazz) #"\$")
         fn-ns (demunge (name-parts 0))
         fn-name (demunge (string/replace (last name-parts) #"__\d+$" ""))
         clinit (find-method clazz "<clinit>")
         fields (:fields (method->expr clazz clinit))
-        invoke (find-method clazz "invoke") ;TODO multiple arities
-        return (:return (method->expr clazz invoke :fields fields))
-        argc (count (.getArgumentTypes invoke))
-        var-table (-> invoke .getLocalVariableTable .getLocalVariableTable)
-        _ (when *debug* (pprint return))]
+        invokes (find-methods clazz "invoke")]
     {:type :fn
      :class-name (.getClassName clazz)
-     :arg-count argc
-     :args (filter #(<= 1 (.getIndex %) argc) var-table)
      :ns fn-ns
      :name (if-not (= fn-name 'fn) fn-name)
-     :body return}))
+     :arities (sort-by #(count (:args %))
+                       (map #(decompile-invoke clazz % fields) invokes))}))
 
 (defn decompile-init [clazz]
   (let [inits (filter #(.startsWith (.getName %) "__init") (.getMethods clazz))

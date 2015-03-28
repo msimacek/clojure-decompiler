@@ -330,6 +330,11 @@
   (defn test-fn [foo]
     (:b (:a foo))))
 
+(deftest-decompile multiple-arities
+  (defn test-fn
+    ([foo] (inc foo))
+    ([foo bar] (+ foo bar))))
+
 (deftest-decompile toplevel
   (println "Hello"))
 (deftest-decompile toplevel-multiple
