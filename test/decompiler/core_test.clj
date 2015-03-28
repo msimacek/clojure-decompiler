@@ -143,6 +143,17 @@
                      unsigned-bit-shift-right get])
 (gen-inline-tests 3 [get])
 
+(deftest-decompile primitive-arith-double
+  (defn test-fn [x y]
+    (let [local1 (double x)
+          local2 (double y)]
+      (java.lang.Math/sqrt (+ (* local1 local2) (- local1))))))
+(deftest-decompile primitive-arith-long
+  (defn test-fn [x y]
+    (let [local1 (long x)
+          local2 (long y)]
+      (java.lang.Math/abs (quot (rem local1 local2) (inc local1))))))
+
 (deftest-decompile return-cast-char
   (defn test-fn [x] (char (+ 97 x))))
 (deftest-decompile return-cast-int

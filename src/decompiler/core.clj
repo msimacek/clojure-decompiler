@@ -8,10 +8,12 @@
            (org.apache.bcel.generic
              ConstantPoolGen InstructionList Type
              LoadInstruction StoreInstruction ConstantPushInstruction
-             GotoInstruction IfInstruction PopInstruction
+             GotoInstruction IfInstruction PopInstruction ArithmeticInstruction
              ACONST_NULL ARETURN RETURN DUP LDC LDC_W LDC2_W INVOKESTATIC
              PUTSTATIC GETSTATIC INVOKEVIRTUAL INVOKEINTERFACE INVOKESPECIAL
-             NEW IFNULL IFEQ IF_ACMPEQ ANEWARRAY AASTORE GETFIELD
+             NEW IFNULL IFEQ IF_ACMPEQ ANEWARRAY AASTORE GETFIELD LNEG DNEG
+             DADD IADD LADD DADD ISUB DSUB DSUB LSUB IMUL DMUL LMUL DMUL IDIV
+             DDIV LDIV IREM LREM LAND LOR LXOR ISHL LSHL ISHR LSHR LUSHR IUSHR
              LCMP DCMPG DCMPL IFNE IFGE IFLE IFGT IFLT IF_ICMPNE)))
 
 (def ^:dynamic *debug* false)
@@ -153,6 +155,59 @@
                          :name '=}}
               (+ index (.getIndex insn))
               (assoc context :stack (pop-n stack 2))))
+
+(def primitive-artihmetic-unary
+  {LNEG '-
+   DNEG '-})
+
+(def primitive-artihmetic-binary
+  {DADD '+
+   IADD '+
+   LADD '+
+   ISUB '-
+   DSUB '-
+   LSUB '-
+   IMUL '*
+   LMUL '*
+   DMUL '*
+   IDIV '/
+   DDIV '/
+   LDIV 'quot
+   IREM 'rem
+   LREM 'rem
+   LAND 'bit-and
+   LOR 'bit-or
+   LXOR 'bit-xor
+   ISHL 'bit-shift-left
+   LSHL 'bit-shift-left
+   ISHR 'bit-shift-right
+   LSHR 'bit-shift-right
+   LUSHR 'unsigned-bit-shift-right
+   IUSHR 'unsigned-bit-shift-right})
+
+(defmethod process-insn ArithmeticInstruction
+  [_ insn {:keys [stack] :as context}]
+  (let [unary-op (primitive-artihmetic-unary (class insn) nil)
+        op (or unary-op (primitive-artihmetic-binary (class insn)))
+        expr (cond
+               unary-op
+               {:type :invoke
+                :args [(peek stack)]
+                :fn-expr {:type :var
+                          :name unary-op}}
+               (and (-> stack peek :value (= 1))
+                      (#{'+ '-} op))
+               {:type :invoke
+                :args [(peek-at stack 1)]
+                :fn-expr {:type :var
+                          :name ({'+ 'inc '- 'dec} op)}}
+               :default
+               {:type :invoke
+                :args (peek-n stack 2)
+                :fn-expr {:type :var
+                          :name op}})]
+    (assoc context
+           :stack (conj (pop-n stack (if unary-op 1 2)) expr))))
 
 (defmethod process-insn LoadInstruction
   [_ insn {:keys [stack vars] :as context}]
