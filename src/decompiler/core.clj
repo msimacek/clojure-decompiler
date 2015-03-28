@@ -11,7 +11,9 @@
              GotoInstruction IfInstruction PopInstruction
              ACONST_NULL ARETURN RETURN DUP LDC LDC_W LDC2_W INVOKESTATIC
              PUTSTATIC GETSTATIC INVOKEVIRTUAL INVOKEINTERFACE INVOKESPECIAL
-             NEW IFNULL IFEQ IF_ACMPEQ ANEWARRAY AASTORE GETFIELD)))
+             NEW IFNULL IFEQ IF_ACMPEQ ANEWARRAY AASTORE GETFIELD
+             LCMP DCMPG DCMPL IFNE IFGE IFLE IFGT IFLT IF_ICMPNE)))
+
 (def ^:dynamic *debug* false)
 
 (defn pop-n [stack n] (let [c (count stack)] (subvec stack 0 (- c n))))
@@ -58,7 +60,7 @@
 (defmethod process-insn :default [_ _ context] context)
 
 (defn process-if
-  [index insn condition target {:keys [code stack statement pool] :as context}]
+  [condition target {:keys [code stack statement pool] :as context}]
   (let [index< #(fn [[i _]] (< i %))
         then (process-insns (assoc context
                                    :code (take-while (index< target) code)
@@ -88,7 +90,7 @@
 
 (defmethod process-insn IFEQ
   [index insn {:keys [stack] :as context}]
-  (process-if index insn (peek stack)
+  (process-if (peek stack)
               (+ index (.getIndex insn))
               (assoc context :stack (pop stack))))
 
@@ -99,10 +101,45 @@
         _ (assert (= (insn-field get-false-insn pool) "java.lang.Boolean/FALSE"))
         [[_ acmpeq-insn] & code] code
         _ (assert (instance? IF_ACMPEQ acmpeq-insn))]
-    (process-if index insn
-                (peek stack)
+    (process-if (peek stack)
                 (+ index (.getIndex insn) 1) ; skip pop
                 (assoc context :stack (pop-n stack 2))))) ; 1 -1 + 2
+
+(def predicate-insns
+  {[DCMPG IFGE] '<
+   [LCMP IFGE] '<
+   [LCMP IFNE] '==
+   [DCMPG IFGT] '<=
+   [LCMP IFGT] '<=
+   [LCMP IFLE] '>
+   [DCMPL IFLE] '>
+   [LCMP IFLT] '>=
+   [DCMPL IFLT] '>=
+   [DCMPL IFNE] '==})
+
+(derive LCMP ::number-predicate)
+(derive DCMPL ::number-predicate)
+(derive DCMPG ::number-predicate)
+
+(defmethod process-insn ::number-predicate
+  [index insn {:keys [code stack] :as context}]
+  (let [[[comp-index comp-insn] & code] code
+        condition {:type :invoke
+                   :args (peek-n stack 2)
+                   :fn-expr {:type :var
+                             :name (predicate-insns [(class insn) (class comp-insn)])}}]
+        (process-if condition
+                    (+ comp-index (.getIndex comp-insn))
+                    (assoc context :stack (pop-n stack 2)))))
+
+(defmethod process-insn IF_ICMPNE
+  [index insn {:keys [stack] :as context}]
+  (process-if {:type :invoke
+               :args (peek-n stack 2)
+               :fn-expr {:type :var
+                         :name '=}}
+              (+ index (.getIndex insn))
+              (assoc context :stack (pop-n stack 2))))
 
 (defmethod process-insn LoadInstruction
   [_ insn {:keys [stack vars] :as context}]

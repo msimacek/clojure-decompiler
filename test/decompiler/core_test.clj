@@ -178,6 +178,12 @@
   (defn test-fn [arg1 arg2] (if (java.lang.Double/isNaN 0.1) "NaN" arg1)))
 (deftest-decompile if-primitive2
   (defn test-fn [arg1 arg2] (if (> arg1 arg2) (inc arg1) arg1)))
+(deftest-decompile if-primitive-predicate1
+  (defn test-fn [arg1 arg2] (if (> (int arg1) (int arg2)) (inc arg1) arg1)))
+(deftest-decompile if-primitive-predicate2
+  (defn test-fn [arg1 arg2] (if (== (long arg1) (long arg2)) (inc arg1) arg1)))
+(deftest-decompile if-primitive-predicate3
+  (defn test-fn [arg1 arg2] (if (= (boolean arg1) (boolean arg2)) (inc arg1) arg1)))
 
 (deftest-decompile simple-let
   (defn test-fn [arg1 arg2] (let [local1 (str arg1 arg1)] local1)))
