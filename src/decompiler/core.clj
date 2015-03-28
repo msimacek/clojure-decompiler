@@ -276,7 +276,7 @@
     (assoc context
            :stack (pop-n stack 3))))
 
-(def casts '#{char short int long float double})
+(def casts '#{char short int long float double boolean})
 
 (def inline-fns
   (apply assoc {"clojure.lang.Numbers/add" '+
