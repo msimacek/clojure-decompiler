@@ -268,6 +268,14 @@
 (deftest-decompile call-fn
   (defn test-fn [foo]
     ((fn [bar] (inc bar) foo))))
+(deftest-decompile recursion
+  (defn test-fn [x]
+    (if (integer? x)
+      (test-fn (/ x 2))
+      x)))
+(deftest-decompile named-local-fn
+  (defn test-fn [foo]
+    (filter (fn f [x] (if (integer? x) (f (/ x 2) x))) foo)))
 (deftest-decompile map-lookup
   (defn test-fn [foo]
     ({:a "a" :b "bbb"} foo)))

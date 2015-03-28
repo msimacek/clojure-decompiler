@@ -545,33 +545,24 @@
       (recur preceding (cons expr chain))
       (cons expr chain))))
 
-(defn fn-arg-syms [function]
-  (mapv #(symbol (.getName %)) (:args function)))
-
+(declare render-expr)
 (defn render-expr [expr fn-map fn-args]
   (letfn
-    [(render-single [expr]
-       (let [args (map render-chain-do (:args expr ()))
-             local-name #(symbol (str "local" (- (:index %) (count fn-args))))
-             render-binding (fn [sym expr]
-                              (list* sym (vec (interleave
-                                                (map local-name (:locals expr))
-                                                (map #(render-chain-do (:initial %)) (:locals expr))))
-                                     (render-chain (:body expr))))] ; TODO more exprs form `do`
+    [(local-name [expr] (symbol (str "local" (- (:index expr) (count fn-args) -1))))
+     (render-single [expr]
+       (let [args (map render-chain-do (:args expr ()))]
          (condp = (:type expr)
            :const (:value expr)
            :const-coll ((:ctor expr) (map render-chain-do (:value expr)))
            :invoke (list* (render-chain-do (:fn-expr expr)) args)
            :invoke-static (list* (symbol (str (:class expr) \/ (:method expr))) args)
            :invoke-ctor (if-let [func (fn-map (:class expr))]
-                          (let [args (fn-arg-syms func)]
-                            (list* 'fn args (render-expr (:body func) fn-map args)))
+                          (render-fn 'fn fn-map func (if-not (:local-name expr) (:name func)))
                           (list* (symbol (str (:class expr) \.)) args))
            :def (let [sym (-> expr :var :name)]
                   (if-let [func (and (-> expr :value :type (= :invoke-ctor))
                                      (fn-map (-> expr :value :class)))]
-                    (let [args (fn-arg-syms func)]
-                      (list* 'defn sym args (render-expr (:body func) fn-map args)))
+                    (render-fn 'defn fn-map func sym)
                     (list 'def sym (render-chain-do (:value expr)))))
            :invoke-member (list* (symbol (str \. (:member expr))) args)
            :recur (list* 'recur (map render-chain-do @(:args expr)))
@@ -588,8 +579,26 @@
                    (list 'if c t f)))
            :arg (if-let [assign (:assign expr)]
                   (render-chain-do assign)
-                  (symbol (or (:name expr) (fn-args (dec (:index expr))))))
+                  (symbol (or (:name expr) (fn-args (:index expr)))))
            (if *debug* expr (throw (IllegalArgumentException. (str "Cannot render: " expr)))))))
+
+     (render-binding [sym expr]
+       (let [local-names (map local-name (:locals expr))]
+         (list* sym (vec (interleave
+                           local-names
+                           (map #(render-chain-do
+                                   (assoc (:initial %1) :local-name %2))
+                                   (:locals expr) local-names)))
+                (render-chain (:body expr)))))
+
+     (fn-arg-syms [function]
+       (mapv #(symbol (.getName %)) (:args function)))
+
+     (render-fn [sym fn-map func fn-name]
+       (let [args (fn-arg-syms func)
+             definition (cons args (render-expr (:body func) fn-map (vec (cons fn-name args))))]
+         (cons sym (if fn-name (cons fn-name definition) definition))))
+
      (render-chain [expr]
        (map render-single (statement-chain expr)))
      (render-chain-do [expr]
@@ -600,7 +609,9 @@
     (render-chain expr)))
 
 (defn decompile-fn [clazz]
-  (let [[fn-ns fn-name] (map demunge (string/split (.getClassName clazz) #"\$" 2))
+  (let [name-parts (string/split (.getClassName clazz) #"\$")
+        fn-ns (demunge (name-parts 0))
+        fn-name (demunge (string/replace (last name-parts) #"__\d+$" ""))
         clinit (find-method clazz "<clinit>")
         fields (:fields (method->expr clazz clinit))
         invoke (find-method clazz "invoke") ;TODO multiple arities
@@ -613,7 +624,7 @@
      :arg-count argc
      :args (filter #(<= 1 (.getIndex %) argc) var-table)
      :ns fn-ns
-     :name fn-name
+     :name (if-not (= fn-name 'fn) fn-name)
      :body return}))
 
 (defn decompile-init [clazz]
