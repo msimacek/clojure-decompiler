@@ -1,7 +1,7 @@
 (ns decompiler.core-test
   (:import (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)
-           (java.io StringReader))
+           (java.io StringReader StringWriter))
   (:require [clojure.test :refer :all]
             [decompiler.core :refer :all]))
 
@@ -11,7 +11,8 @@
   (let [dir (Files/createTempDirectory (str "decompiler-test-" test-name)
                                        (into-array FileAttribute []))]
     (-> dir .toFile .deleteOnExit)
-    (binding [*compile-files* true
+    (binding [*out* (StringWriter.)
+              *compile-files* true
               *compile-path* (str dir)]
       (with-open [rdr (StringReader. (apply str code))]
         (Compiler/compile rdr "test_code.clj" "TEST_SOURCE")))
