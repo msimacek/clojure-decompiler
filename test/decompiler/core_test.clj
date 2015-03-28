@@ -267,6 +267,21 @@
 (deftest-decompile call-fn
   (defn test-fn [foo]
     ((fn [bar] (inc bar) foo))))
+(deftest-decompile map-lookup
+  (defn test-fn [foo]
+    ({:a "a" :b "bbb"} foo)))
+(deftest-decompile set-lookup
+  (defn test-fn [foo]
+    (#{"a" (str 1)} foo)))
+(deftest-decompile keyword-lookup1
+  (defn test-fn []
+    (:a {:a 1})))
+(deftest-decompile keyword-lookup2
+  (defn test-fn [foo]
+    (:a foo)))
+(deftest-decompile keyword-lookup3
+  (defn test-fn [foo]
+    (:b (:a foo))))
 
 (deftest-decompile toplevel
   (println "Hello"))

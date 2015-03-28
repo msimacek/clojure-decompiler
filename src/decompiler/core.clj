@@ -322,6 +322,7 @@
                              nil 'nil?}
         coll-consts {"clojure.lang.RT/vector" vec
                      "clojure.lang.RT/set" set
+                     "clojure.lang.RT/map" #(apply hash-map %)
                      "clojure.lang.RT/mapUniqueKeys" #(apply hash-map %)}
         boxing #{"java.lang.Long/valueOf"
                  "java.lang.Double/valueOf"
@@ -423,17 +424,36 @@
            :stack (conj (pop stack) expr))))
 
 (defmethod process-insn INVOKEINTERFACE
-  [_ insn {:keys [stack pool statement] :as context}]
-  ; (if (= (.getMethodName insn pool) "invoke") ;TODO check type
-  (let [argc (count (.getArgumentTypes insn pool))
-        args (peek-n stack argc)
-        expr {:type :invoke
-              :preceding-statement statement
-              :args args
-              :fn-expr (peek-at stack argc)}]
-    (assoc context
-           :stack (conj (pop-n stack (inc argc)) expr)
-           :statement nil)))
+  [_ insn {:keys [stack pool statement code] :as context}]
+  (condp = (insn-method insn pool)
+    "clojure.lang.IFn/invoke"
+    (let [argc (count (.getArgumentTypes insn pool))
+          args (peek-n stack argc)
+          expr {:type :invoke
+                :preceding-statement statement
+                :args args
+                :fn-expr (peek-at stack argc)}]
+      (assoc context
+             :stack (conj (pop-n stack (inc argc)) expr)
+             :statement nil))
+    "clojure.lang.ILookupThunk/get"
+    (let [keyword-site (peek-at stack 1)
+          _ (assert (= (:class keyword-site) "clojure.lang.KeywordLookupSite"))
+          lookup-target (peek stack)
+          end-fn (fn [[_ i]]
+                   (not (and (instance? INVOKEINTERFACE i)
+                             (= (insn-method i pool) "clojure.lang.ILookupThunk/get"))))
+          expr {:type :invoke
+                :fn-expr (first (:args keyword-site))
+                :args [lookup-target]
+                :preceding-statement statement}]
+      (assoc context
+             ; there was a dup_x2 but we left it a no-op
+             ; 2 for this fn, 1 more would be consumed by the skipped body
+             :stack (conj (pop-n stack 3) expr)
+             :statement nil
+             :code (rest (drop-while end-fn code))))
+    :>> #(throw (IllegalArgumentException. (str "Unknown interface method: " %)))))
 
 (defmethod process-insn NEW
   [_ insn {:keys [stack pool] :as context}]
@@ -569,7 +589,7 @@
            :arg (if-let [assign (:assign expr)]
                   (render-chain-do assign)
                   (symbol (or (:name expr) (fn-args (dec (:index expr))))))
-           (throw (IllegalArgumentException. (str "Cannot render: " expr))))))
+           (if *debug* expr (throw (IllegalArgumentException. (str "Cannot render: " expr)))))))
      (render-chain [expr]
        (map render-single (statement-chain expr)))
      (render-chain-do [expr]
