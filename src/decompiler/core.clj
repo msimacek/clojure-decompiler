@@ -2,7 +2,8 @@
   (:gen-class :main true)
   (:require [clojure.string :as string]
             [clojure.java.io :as io]
-            [clojure.pprint :refer [pprint]])
+            [clojure.pprint :refer [pprint]]
+            [clojure.tools.logging :as log])
   (:import (clojure.lang Reflector)
            (org.apache.bcel.classfile ClassParser)
            (org.apache.bcel.generic
@@ -25,6 +26,10 @@
 (defn assoc* [coll n item] (if (contains? coll n)
                              (assoc coll n item)
                              (recur (conj coll nil) n item)))
+
+(defmacro conj-if
+  ([coll condition item] `(let [c# ~coll] (if ~condition (conj c# ~item) c#)))
+  ([coll item] `(let [c# ~coll i# ~item] (if i# (conj c# i#) c#))))
 
 (defn find-methods [clazz method]
   (filter #(= (.getName %) method) (.getMethods clazz)))
@@ -798,17 +803,21 @@
                (:stack load-method)
                (cons (:return load-method) (:stack load-method)))]
     {:type :init
-     :body (filter #(statement-types (:type %)) body)}))
+     :body (conj-if (filter #(statement-types (:type %)) body) (:error load-method))}))
 
 (defn decompile-class [clazz]
   "Decompiles single class file"
-  (cond
-    (= (.getSuperclassName clazz) "clojure.lang.AFunction")
-    (decompile-fn clazz)
-    (= (.getSuperclassName clazz) "clojure.lang.RestFn")
-    (decompile-fn clazz)
-    (= (.endsWith (.getClassName clazz) "__init"))
-    (decompile-init clazz)))
+  (let [class-name (.getClassName clazz)
+        superclass (.getSuperclassName clazz)]
+    (cond
+      (= superclass "clojure.lang.AFunction")
+      (decompile-fn clazz)
+      (= superclass "clojure.lang.RestFn")
+      (decompile-fn clazz)
+      (= (.endsWith class-name "__init"))
+      (decompile-init clazz)
+      :default
+      (log/warn "Unrecognized class " class-name ". Skipping"))))
 
 (defn get-classes [files]
   "Returns file paths as BCEL's JavaClasses"

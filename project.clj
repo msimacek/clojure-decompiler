@@ -6,4 +6,5 @@
   :main decompiler.core
   :aot [decompiler.core]
   :dependencies [[org.clojure/clojure "1.6.0"]
+                 [org.clojure/tools.logging "0.3.1"]
                  [org.apache.bcel/bcel "5.2"]])
