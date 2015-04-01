@@ -52,8 +52,14 @@
 
 (defn process-insns [context]
   (if (seq (:code context))
-    (let [[[index insn] & code] (:code context)]
-      (recur (process-insn index insn (assoc context :code code))))
+    (let [[[index insn] & code] (:code context)
+          result (try (process-insn index insn (assoc context :code code))
+                   (catch Exception e e))]
+      (if (instance? Exception result)
+        (assoc context :error {:type :error
+                               :cause result
+                               :insn insn})
+        (recur result)))
     (let [top (if-let [r (:return context)]
                 r
                 (-> context :stack peek))
@@ -675,7 +681,6 @@
       (recur preceding (cons expr chain))
       (cons expr chain))))
 
-(declare render-expr)
 (defn render-expr [expr fn-map fn-args]
   (letfn
     [(local-name [expr] (symbol (or (:name expr)
@@ -711,6 +716,9 @@
            :arg (if-let [assign (:assign expr)]
                   (render-chain-do assign)
                   (symbol (or (:name expr) (fn-args (:index expr)))))
+           :error (list 'comment "Couldn't decompile function"
+                        (str "Exception:" (:cause expr))
+                        (str "Instruction where the exception occured:" (:insn expr)))
            (if *debug* expr (throw (IllegalArgumentException. (str "Cannot render: " expr)))))))
 
      (render-binding [sym expr]
@@ -748,7 +756,7 @@
     (render-chain expr)))
 
 (defn decompile-invoke [clazz invoke fields]
-  (let [return (:return (method->expr clazz invoke :fields fields))
+  (let [{:keys [return error]} (method->expr clazz invoke :fields fields)
         argc (count (.getArgumentTypes invoke))
         required-arity (if (= (.getName invoke) "doInvoke")
                          (-> (method->expr clazz (find-method clazz "getRequiredArity"))
@@ -758,14 +766,14 @@
     {:type :fn-single
      :required-arity required-arity
      :args (filter #(<= 1 (.getIndex %) argc) var-table)
-     :body return}))
+     :body (or error return)}))
 
 (defn decompile-fn [clazz]
   (let [name-parts (string/split (.getClassName clazz) #"\$")
         fn-ns (demunge (name-parts 0))
         fn-name (demunge (string/replace (last name-parts) #"__\d+$" ""))
         clinit (find-method clazz "<clinit>")
-        fields (:fields (method->expr clazz clinit))
+        {:keys [fields error]}  (method->expr clazz clinit)
         invokes (find-methods clazz "invoke")
         do-invoke (find-method clazz "doInvoke")
         arities (vec (sort-by #(count (:args %))
@@ -774,6 +782,7 @@
      :class-name (.getClassName clazz)
      :ns fn-ns
      :name (if-not (= fn-name 'fn) fn-name)
+     :error error
      :arities (if do-invoke
                 (conj arities (decompile-invoke clazz do-invoke fields))
                 arities)}))
