@@ -814,7 +814,7 @@
       (decompile-fn clazz)
       (= superclass "clojure.lang.RestFn")
       (decompile-fn clazz)
-      (= (.endsWith class-name "__init"))
+      (find-method clazz "load")
       (decompile-init clazz)
       :default
       (log/warn "Unrecognized class " class-name ". Skipping"))))
