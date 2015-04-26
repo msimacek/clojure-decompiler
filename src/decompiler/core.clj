@@ -213,17 +213,15 @@
                          :code (take-while (index< end-index)
                                            (drop-while (index< default-index) code))))
         condition (peek stack)
-        condition (cond
-                    (and (-> condition :fn-expr :name (= 'bit-and))
-                         (-> condition :args first :fn-expr :name (= 'bit-shift-right)))
+        condition (if (and (-> condition :fn-expr :name (= 'bit-and))
+                           (-> condition :args first :fn-expr :name (= 'bit-shift-right)))
                     (-> condition :args first :args first)
-
-                    (and (-> condition :class (= "clojure.lang.Util"))
-                         (-> condition :method (= "hash")))
-                    (-> condition :args first)
-
-                    :default
                     condition)
+        condition (if (and (-> condition :class (= "clojure.lang.Util"))
+                           (-> condition :method (= "hash")))
+                    (-> condition :args first)
+                    condition)
+
         expr {:type :case
               :branches (filter identity (map #(if-not (nil? %1) [%1 %2]) matches thens))
               :cond condition

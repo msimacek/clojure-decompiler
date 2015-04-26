@@ -259,6 +259,12 @@
       :bb true ; the order is arbitrary
       :aa nil
       false)))
+(deftest-decompile case-hash-identity-shifted
+  (defn test-fn [arg1]
+    (case arg1
+      :bbb nil
+      :aaa true ; the order is arbitrary
+      false)))
 (deftest-decompile case-hash-equiv
   (defn test-fn [arg1]
     (case arg1
