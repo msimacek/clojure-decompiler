@@ -241,11 +241,29 @@
 ;                  (recur nil (next local3))
 ;                  local4)) local1))))
 
-(deftest-decompile case-ints
+(deftest-decompile case-ints-packed
   (defn test-fn [arg1]
     (case arg1
       0 nil
       1 true
+      false)))
+(deftest-decompile case-ints-sparse
+  (defn test-fn [arg1]
+    (case arg1
+      0 nil
+      9999 true
+      false)))
+(deftest-decompile case-hash-identity
+  (defn test-fn [arg1]
+    (case arg1
+      :bb true ; the order is arbitrary
+      :aa nil
+      false)))
+(deftest-decompile case-hash-equiv
+  (defn test-fn [arg1]
+    (case arg1
+      "aa" nil
+      "bb" true
       false)))
 
 (deftest-decompile multiple-statements

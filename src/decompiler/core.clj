@@ -12,10 +12,11 @@
              GotoInstruction IfInstruction PopInstruction ArithmeticInstruction
              ACONST_NULL ARETURN RETURN DUP LDC LDC_W LDC2_W INVOKESTATIC
              PUTSTATIC GETSTATIC INVOKEVIRTUAL INVOKEINTERFACE INVOKESPECIAL
-             NEW IFNULL IFEQ IF_ACMPEQ ANEWARRAY AASTORE GETFIELD LNEG DNEG
-             DADD IADD LADD DADD ISUB DSUB DSUB LSUB IMUL DMUL LMUL DMUL IDIV
-             DDIV LDIV IREM LREM LAND LOR LXOR ISHL LSHL ISHR LSHR LUSHR IUSHR
-             LCMP DCMPG DCMPL IFNE IFGE IFLE IFGT IFLT IF_ICMPNE)))
+             NEW IFNULL IFEQ IF_ACMPEQ IF_ACMPNE IF_ICMPNE ANEWARRAY AASTORE
+             GETFIELD LNEG DNEG DADD IADD LADD DADD ISUB DSUB DSUB LSUB IMUL
+             DMUL LMUL DMUL IDIV DDIV LDIV IREM LREM LAND IAND LOR LXOR ISHL
+             LSHL ISHR LSHR LUSHR IUSHR LCMP DCMPG DCMPL IFNE IFGE IFLE IFGT
+             IFLT)))
 
 (def ^:dynamic *debug* false)
 
@@ -106,6 +107,7 @@
                {:type :if
                 :cond (dissoc condition :preceding-statement)
                 :preceding-statement (:preceding-statement condition statement)
+                :end-index end
                 :else else
                 :then then})]
     (assoc context
@@ -130,6 +132,15 @@
     (process-if (peek stack)
                 (+ index (.getIndex insn) 1) ; skip pop
                 (assoc context :stack (pop-n stack 2))))) ; 1 -1 + 2
+
+(defmethod process-insn IF_ACMPNE
+  [index insn {:keys [stack] :as context}]
+  (process-if {:type :invoke
+               :fn-expr {:type :var
+                         :name 'not=}
+               :args (peek-n stack 2)}
+              (+ index (.getIndex insn))
+              (assoc context :stack (pop-n stack 2))))
 
 (def predicate-insns
   {[DCMPG IFGE] '<
@@ -167,9 +178,9 @@
                    :args (if unary-predicate [(peek-at stack 1)] (peek-n stack 2))
                    :fn-expr {:type :var
                              :name predicate}}]
-        (process-if condition
-                    (+ comp-index (.getIndex comp-insn))
-                    (assoc context :stack (pop-n stack 2)))))
+    (process-if condition
+                (+ comp-index (.getIndex comp-insn))
+                (assoc context :stack (pop-n stack 2)))))
 
 (defmethod process-insn IF_ICMPNE
   [index insn {:keys [stack] :as context}]
@@ -184,24 +195,38 @@
   [index insn {:keys [stack code] :as context}]
   (let [add-index (partial + index)
         targets (map add-index (.getIndices insn))
-        matches (map (fn [x] {:type :const
-                              :value x})
-                     (.getMatchs insn))
         default-index (add-index (.getIndex insn))
-        thens (map #(process-insns
+        thens (map #(-> (process-insns
                           (assoc context
                                  :code (drop-while (index< %) code)))
+                        :return)
                    targets)
-        thens (map (comp :then :return) thens)
-        ; end-index (:goto-target (first thens))
-        end-index 73
+        matches (map (comp second :args #(:cond % %)) thens)
+        ; the if end index == case end index, since the else branch == default
+        end-index (first (keep :end-index thens))
+        thens (map #(:then % {:type :const ; process-if confused it with boolean unboxing.
+                                           ; TODO this is just a workaround
+                              :value true})
+                   thens)
         default (process-insns
                   (assoc context
                          :code (take-while (index< end-index)
                                            (drop-while (index< default-index) code))))
+        condition (peek stack)
+        condition (cond
+                    (and (-> condition :fn-expr :name (= 'bit-and))
+                         (-> condition :args first :fn-expr :name (= 'bit-shift-right)))
+                    (-> condition :args first :args first)
+
+                    (and (-> condition :class (= "clojure.lang.Util"))
+                         (-> condition :method (= "hash")))
+                    (-> condition :args first)
+
+                    :default
+                    condition)
         expr {:type :case
-              :branches (map vector matches thens)
-              :cond (peek stack)
+              :branches (filter identity (map #(if-not (nil? %1) [%1 %2]) matches thens))
+              :cond condition
               :default (:return default)}]
     (assoc context
            :stack (conj (pop stack) expr)
@@ -228,6 +253,7 @@
    IREM 'rem
    LREM 'rem
    LAND 'bit-and
+   IAND 'bit-and ; emitted in case condition
    LOR 'bit-or
    LXOR 'bit-xor
    ISHL 'bit-shift-left
@@ -248,7 +274,7 @@
                 :fn-expr {:type :var
                           :name unary-op}}
                (and (-> stack peek :value (= 1))
-                      (#{'+ '-} op))
+                    (#{'+ '-} op))
                {:type :invoke
                 :args [(peek-at stack 1)]
                 :fn-expr {:type :var
@@ -584,12 +610,12 @@
                     :member (:value method-name-expr)}
                    expr))
                expr)
-        is-invoke (.startsWith (name (:type expr)) "invoke")]
-    (if is-invoke
-      (generic-invoke-expr insn expr argc context)
-      (assoc context
-             :stack (conj (pop-n stack argc) expr)
-             :statement nil))))
+is-invoke (.startsWith (name (:type expr)) "invoke")]
+(if is-invoke
+  (generic-invoke-expr insn expr argc context)
+  (assoc context
+         :stack (conj (pop-n stack argc) expr)
+         :statement nil))))
 
 (defmethod process-insn GETFIELD
   [_ insn {:keys [stack pool] :as context}]
@@ -769,7 +795,7 @@
                   (symbol (or (:name expr) (fn-args (:index expr)))))
            :error (list 'comment "Couldn't decompile function"
                         (str "Exception:" (:cause expr))
-                        (str "Instruction where the exception occured:" (:insn expr)))
+                        (str "Instruction where the exception occured:" (-> expr :insn class)))
            (if *debug* expr (throw (IllegalArgumentException. (str "Cannot render: " expr)))))))
 
      (render-binding [sym expr]
@@ -778,7 +804,7 @@
                            local-names
                            (map #(render-chain-do
                                    (assoc (:initial %1) :local-name %2))
-                                   (:locals expr) local-names)))
+                                (:locals expr) local-names)))
                 (render-chain (:body expr)))))
 
      (fn-arg-syms [args]
