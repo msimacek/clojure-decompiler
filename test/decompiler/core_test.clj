@@ -253,6 +253,13 @@
 ;                  (recur nil (next local3))
 ;                  local4)) local1))))
 
+(deftest-decompile case-ints
+  (defn test-fn [arg1]
+    (case arg1
+      0 nil
+      1 true
+      false)))
+
 (deftest-decompile multiple-statements
   (defn test-fn [arg1]
     (println 0)

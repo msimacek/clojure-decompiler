@@ -7,7 +7,7 @@
   (:import (clojure.lang Reflector)
            (org.apache.bcel.classfile ClassParser)
            (org.apache.bcel.generic
-             ConstantPoolGen InstructionList Type
+             ConstantPoolGen InstructionList Type Select
              LoadInstruction StoreInstruction ConstantPushInstruction
              GotoInstruction IfInstruction PopInstruction ArithmeticInstruction
              ACONST_NULL ARETURN RETURN DUP LDC LDC_W LDC2_W INVOKESTATIC
@@ -75,10 +75,11 @@
 
 (defmethod process-insn :default [_ _ context] context)
 
+(defn index< [x] (fn [[i _]] (< i x)))
+
 (defn process-if
   [condition target {:keys [code stack statement pool] :as context}]
-  (let [index< #(fn [[i _]] (< i %))
-        then (process-insns (assoc context
+  (let [then (process-insns (assoc context
                                    :code (take-while (index< target) code)
                                    :statement nil))
         end (:goto-target then)
@@ -88,16 +89,25 @@
                                            (take-while (index< end) rest-code)
                                            rest-code)
                                    :statement nil))
-        expr (if (and (true? (-> then :return :value))
-                      (false? (-> else :return :value)))
+        then (:return then)
+        else (:return else)
+        expr (cond
+               (and (true? (:value then))
+                    (false? (:value else)))
                ; not a real if, just boolean boxing
                condition
+
+               (= (:type then) :case) ;TODO there may be real if around case
+               ; case wrapper
+               (assoc then :default else)
+
+               :default
                ; real if
                {:type :if
                 :cond (dissoc condition :preceding-statement)
                 :preceding-statement (:preceding-statement condition statement)
-                :else (:return else)
-                :then (:return then)})]
+                :else else
+                :then then})]
     (assoc context
            :code (if end (drop-while (index< end) code) ())
            :stack (conj stack expr)
@@ -169,6 +179,34 @@
                          :name '=}}
               (+ index (.getIndex insn))
               (assoc context :stack (pop-n stack 2))))
+
+(defmethod process-insn Select
+  [index insn {:keys [stack code] :as context}]
+  (let [add-index (partial + index)
+        targets (map add-index (.getIndices insn))
+        matches (map (fn [x] {:type :const
+                              :value x})
+                     (.getMatchs insn))
+        default-index (add-index (.getIndex insn))
+        thens (map #(process-insns
+                          (assoc context
+                                 :code (drop-while (index< %) code)))
+                   targets)
+        thens (map (comp :then :return) thens)
+        ; end-index (:goto-target (first thens))
+        end-index 73
+        default (process-insns
+                  (assoc context
+                         :code (take-while (index< end-index)
+                                           (drop-while (index< default-index) code))))
+        expr {:type :case
+              :branches (map vector matches thens)
+              :cond (peek stack)
+              :default (:return default)}]
+    (assoc context
+           :stack (conj (pop stack) expr)
+           :code (drop-while (index< end-index) code))))
+
 
 (def primitive-artihmetic-unary
   {LNEG '-
@@ -302,11 +340,14 @@
                      (list local))
             body (if squash (:body inner-expr) inner-expr)
             recurs (if squash (:recurs inner-expr) recurs)
-            expr {:type binding-type
-                  :preceding-statement statement
-                  :locals locals
-                  :body body
-                  :recurs recurs}]
+            expr (if (and (= (:type inner-expr) :case)
+                          (identical? (:cond inner-expr) local))
+                   (assoc inner-expr :cond (:initial local))
+                   {:type binding-type
+                    :preceding-statement statement
+                    :locals locals
+                    :body body
+                    :recurs recurs})]
         (dorun (map (fn [e]
                       (swap! (:args e) (constantly
                                          (filter
@@ -625,6 +666,8 @@
     context
     "clojure.lang.Var/setMeta"
     (assoc context :stack (pop-n stack 2)) ; TODO metadata
+    "java.lang.Number/intValue" ; int cast
+    context
     "clojure.lang.Var/bindRoot"
     (let [expr {:type :def
                 :var (peek-at stack 1)
@@ -718,6 +761,9 @@
                  (if (nil? f)
                    (list 'if c t)
                    (list 'if c t f)))
+           :case (list* 'case (render-chain-do (:cond expr))
+                        (concat (mapcat #(map render-chain-do %) (:branches expr))
+                                [(render-chain-do (:default expr))]))
            :arg (if-let [assign (:assign expr)]
                   (render-chain-do assign)
                   (symbol (or (:name expr) (fn-args (:index expr)))))
