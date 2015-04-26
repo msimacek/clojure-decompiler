@@ -19,18 +19,6 @@
     (if *debug* (println))
     (vec (do-decompile [(str dir)]))))
 
-(defn typed-equals [x y]
-  (and (or (= (class x) (class y))
-           (and (seq? x) (seq? y))
-           (and (set? x) (set? y))
-           (and (map? x) (map? y)))
-       (if (sequential? x)
-         (and
-           (= (count x) (count y))
-           (every? true? (map typed-equals x y)))
-         ; sets and maps are not deeply type-compared
-         (= x y))))
-
 (defmacro deftest-decompile
   ([test-name code]
    `(deftest-decompile ~test-name ~code ~code))
@@ -39,7 +27,7 @@
          code (to-code code)
          expected-code (to-code expected-code)]
      `(deftest ~test-name
-        (is (typed-equals '~expected-code
+        (is (= '~expected-code
                           (compile-and-decompile ~(name test-name) '~code)))))))
 
 (deftest-decompile return-0
@@ -362,3 +350,8 @@
 (deftest-decompile toplevel-more
   [(def some-string "私はかわいい猫です")
    (def important-number (inc 41))])
+(deftest-decompile toplevel-if
+  [(println "haha")
+   (if *command-line-args* (println 1) (println 2))])
+; (deftest-decompile ns-statement
+;   (ns cool-namespace))
