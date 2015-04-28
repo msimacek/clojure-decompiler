@@ -664,12 +664,8 @@
 
                #{"clojure.lang.Symbol/intern"}
                ; symbol constant, we need to wrap it into quote
-               {:type :invoke
-                :fn-expr {:type :var
-                          :ns 'clojure.core
-                          :name 'quote}
-                :args [{:type :const
-                        :value (symbol (-> args first :value) (-> args second :value))}]}
+               {:type :const
+                :value (symbol (-> args first :value) (-> args second :value))}
 
                #{"clojure.lang.RT/readString"}
                ; BigDecimal or BigInt constant, Clojure will parse it for us
@@ -929,7 +925,8 @@
      (render-single [expr]
        (let [args (map render-chain-do (:args expr ()))]
          (condp = (:type expr)
-           :const (:value expr)
+           :const (let [v (:value expr)]
+                    (if (symbol? v) (list 'quote v) v))
            :const-coll ((:ctor expr) (map render-chain-do (:value expr)))
            :invoke (list* (render-chain-do (:fn-expr expr)) args)
            :invoke-static (list* (symbol (str (:class expr) \/ (:method expr))) args)
