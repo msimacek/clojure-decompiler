@@ -110,6 +110,8 @@
   (defn test-fn [] (.toString (java.awt.Point. 1 2))))
 (deftest-decompile call-virtual-void
   (defn test-fn [] (.println java.lang.System/out "bbb")))
+(deftest-decompile instanceof
+  (defn test-fn [] (instance? java.io.InputStream *in*)))
 
 ; test that inlined functions are converted to their clojure form
 (defmacro deftest-inline [sym arity]
@@ -348,6 +350,9 @@
 (deftest-decompile keyword-lookup3
   (defn test-fn [foo]
     (:b (:a foo))))
+(deftest-decompile keyword-lookup-default
+  (defn test-fn [foo]
+    (:b foo false)))
 
 (deftest-decompile multiple-arities
   (defn test-fn

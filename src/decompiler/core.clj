@@ -16,7 +16,7 @@
       ACONST_NULL ARETURN RETURN DUP LDC LDC_W LDC2_W INVOKESTATIC PUTSTATIC
       GETSTATIC INVOKEVIRTUAL INVOKEINTERFACE INVOKESPECIAL NEW IFNULL IFEQ
       IF_ACMPEQ IF_ACMPNE IF_ICMPNE ANEWARRAY AASTORE GETFIELD LCMP DCMPL
-      DCMPG)))
+      DCMPG INSTANCEOF)))
 
 (def ^:dynamic *debug* false)
 
@@ -243,6 +243,18 @@
                          :name '=}}
               (+ index (.getIndex insn))
               (assoc context :stack (pop-n stack 2))))
+
+(defmethod process-insn INSTANCEOF
+  [index insn {:keys [stack pool] :as context}]
+  "Decompiles instance? predicate"
+  (let [of-class {:type :var
+                  :name (-> (.getType insn pool) str symbol)}
+        expr {:type :invoke
+              :fn-expr {:type :var
+                        :name 'instance?}
+              :args [of-class (peek stack)]}]
+  (assoc context
+         :stack (conj (pop stack) expr))))
 
 (defmethod process-insn Select
   [index insn {:keys [stack code] :as context}]
