@@ -1039,6 +1039,7 @@
     [; helper to get name of local variable
      (local-name [expr] (symbol (or (:name expr)
                                     (str "local" (- (:index expr) (count fn-args) -1)))))
+     ; convert single expression
      (render-single [expr]
        (let [args (map render-chain-do (:args expr ()))]
          (condp = (:type expr)
@@ -1073,11 +1074,13 @@
            :arg (if-let [assign (:assign expr)]
                   (render-chain-do assign)
                   (symbol (or (:name expr) (fn-args (:index expr)))))
+           ; we couldn't decompile, so output placeholder comment
            :error (list 'comment "Couldn't decompile function"
                         (str "Exception:" (:cause expr))
                         (str "Instruction where the exception occured:" (-> expr :insn class)))
            (if *debug* expr (throw (IllegalArgumentException. (str "Cannot render: " expr)))))))
 
+     ; let/loop helper
      (render-binding [sym expr]
        (let [local-names (map local-name (:locals expr))]
          (list* sym (vec (interleave
@@ -1087,9 +1090,11 @@
                                 (:locals expr) local-names)))
                 (render-chain (:body expr)))))
 
+     ; helper to get argument name symbols
      (fn-arg-syms [args]
        (mapv #(symbol (.getName %)) args))
 
+     ; helper to conver single arity of a function
      (render-arity [arity fn-name]
        (let [args (fn-arg-syms (:args arity))
              argspec (if-let [req (:required-arity arity)]
@@ -1098,13 +1103,17 @@
                        args)]
          (cons argspec (render-expr (:body arity) fn-map (vec (cons fn-name args))))))
 
+     ; convert function definition
      (render-fn [sym func fn-name]
        (let [definition (map #(render-arity % fn-name) (:arities func))
              definition (if (= (count definition) 1) (first definition) definition)]
          (cons sym (if fn-name (cons fn-name definition) definition))))
 
+     ; render a chain of statements inline (without do)
      (render-chain [expr]
        (map render-single (statement-chain expr)))
+
+     ; render a chain of statements wrapped in do if there are more than 1
      (render-chain-do [expr]
        (let [chain (statement-chain expr)]
          (if (> (count chain) 1)
@@ -1113,48 +1122,72 @@
     (render-chain expr)))
 
 (defn decompile-invoke [clazz invoke fields]
+  "Decompiles single invoke method into function expression tree"
   (let [{:keys [return error]} (method->expr clazz invoke :fields fields)
         argc (count (.getArgumentTypes invoke))
+        ; variadic functions have methdos returning their minimal arity
+        ; we need to know it to place the '& argument separator
         required-arity (if (= (.getName invoke) "doInvoke")
                          (-> (method->expr clazz (find-method clazz "getRequiredArity"))
                              :return :value))
+        ; local variable (and arguments) table (names and indices where they start
         var-table (-> invoke .getLocalVariableTable .getLocalVariableTable)]
     (when *debug* (pprint return))
     {:type :fn-single
+     ; minimal arity for variadic, nil for others
      :required-arity required-arity
+     ; locals with index less than argc are function arguments, 0th one is
+     ; implicit this that we don't want emitted
      :args (filter #(<= 1 (.getIndex %) argc) var-table)
      :body (or error return)}))
 
 (defn decompile-fn [clazz]
-  (let [name-parts (string/split (.getClassName clazz) #"\$")
+  "Decompiles whole function class into function expression tree"
+  (let [; get function name from class name
+        name-parts (string/split (.getClassName clazz) #"\$")
         fn-ns (demunge (name-parts 0))
+        ; remove gensym digits from the name
         fn-name (demunge (string/replace (last name-parts) #"__\d+$" ""))
+        ; class initializer, we need the fields
         clinit (find-method clazz "<clinit>")
         {:keys [fields error]}  (method->expr clazz clinit)
+        ; regular arities
         invokes (find-methods clazz "invoke")
+        ; optional variadic arity
         do-invoke (find-method clazz "doInvoke")
+        ; decompile invokes
         arities (vec (sort-by #(count (:args %))
                               (map #(decompile-invoke clazz % fields) invokes)))]
     {:type :fn
      :class-name (.getClassName clazz)
      :ns fn-ns
+     ; functions with name 'fn are anonymous, set the name to nil for them
      :name (if-not (= fn-name 'fn) fn-name)
      :error error
+     ; add variadic among arities, if there is one
      :arities (if do-invoke
                 (conj arities (decompile-invoke clazz do-invoke fields))
                 arities)}))
 
 (defn decompile-init [clazz]
-  (let [inits (filter #(.startsWith (.getName %) "__init") (.getMethods clazz))
+  "Decompile initialization class into expression tree"
+  (let [; constant initializer methods
+        inits (filter #(.startsWith (.getName %) "__init") (.getMethods clazz))
+        ; decompile to get all initialized fields
         fields (reduce #(:fields (method->expr clazz %2 :fields %1)) (cons nil inits))
         statement-types #{:invoke :invoke-static :invoke-ctor :invoke-member
                           :def :if :let :loop}
+        ; decompile top-level statements
         load-method (method->expr clazz (find-method clazz "load") :fields fields)
+        ; get statements from decompilation context
+        ; the compiler emits expression in statement context, so they end up on
+        ; the stack. We need to get them from there
         ; FIXME this looks kinda arbitrary
         body (if (identical? (-> load-method :stack peek) (-> load-method :return))
                (:stack load-method)
                (cons (:return load-method) (:stack load-method)))]
     {:type :init
+     ; filter out irrelevant stack items
      :body (conj-if (filter #(statement-types (:type %)) body) (:error load-method))}))
 
 (defn decompile-class [clazz]
@@ -1163,12 +1196,19 @@
         superclass (.getSuperclassName clazz)]
     (cond
       (= superclass "clojure.lang.AFunction")
+      ; regular Clojure function
       (decompile-fn clazz)
+
       (= superclass "clojure.lang.RestFn")
+      ; variadic Clojure function
       (decompile-fn clazz)
+
       (find-method clazz "load")
+      ; module initialization class
       (decompile-init clazz)
+
       :default
+      ; unsupported class type
       (log/warn "Unrecognized class " class-name ". Skipping"))))
 
 (defn get-classes [files]
@@ -1176,6 +1216,7 @@
   (map #(.parse (ClassParser. %)) files))
 
 (defn get-classes-from-paths [paths]
+  "Finds classes in supplied paths and parses them using BCEL"
   (->> paths
        (mapcat #(file-seq (io/file %)))
        (map str)
@@ -1187,6 +1228,8 @@
   (keep decompile-class (get-classes-from-paths paths)))
 
 (defn render-classes [classes]
+  "Convert expression trees of classes into Clojure source code. Requires at
+  least one initialization class to be present"
   (let [fn-map (into {} (keep #(if (= (:type %) :fn) [(:class-name %) %]) classes))
         init (first (filter #(= (:type %) :init) classes))]
     (if init
@@ -1198,8 +1241,9 @@
                  "For decompling Java projects use a Java decompiler."))))
 
 (defn do-decompile [paths]
+  "Decompile class files found in paths into Clojure source code"
   (render-classes (decompile-classes paths)))
 
 (defn -main [& paths]
   "Entry point. Decompiles class files given as commandline arguments"
-  (dorun (map pprint (render-classes (decompile-classes paths)))))
+  (dorun (map pprint (do-decompile paths))))
