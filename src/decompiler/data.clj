@@ -118,4 +118,3 @@
                 "clojure.lang.RT/get" 'get
                 "clojure.lang.RT/isReduced" 'reduced?}
          (mapcat #(vector (str "clojure.lang.RT/" % "Cast") %) casts)))
-

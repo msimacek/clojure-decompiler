@@ -1071,7 +1071,7 @@
         ; FIXME this looks kinda arbitrary
         body (if (identical? (-> load-method :stack peek) (-> load-method :return))
                (:stack load-method)
-               (cons (:return load-method) (:stack load-method)))]
+               (concat (:stack load-method) [(:return load-method)]))]
     {:type :init
      ; filter out irrelevant stack items
      :body (conj-if (filter #(statement-types (:type %)) body) (:error load-method))}))
