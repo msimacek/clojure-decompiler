@@ -885,6 +885,21 @@
          :statement nil
          :return statement))
 
+(defn process-namespace
+  [exprs]
+  "Transforms list of expression trees to a form with 'ns macro"
+  (if-not (-> exprs first :fn-expr :name (= 'in-ns))
+    exprs
+    (let [ns-sym (-> exprs first :args first :value)
+          ns-expr {:type :invoke
+                   :fn-expr {:type :var
+                             :ns 'clojure.core
+                             :name 'ns}
+                   :args [{:type :var
+                           :name ns-sym}]}]
+      ; in-ns + loading-fn + if
+      (cons ns-expr (drop 3 exprs)))))
+
 (defn get-indexed-insns [method]
   "Creates a sequence of instructions indexed by their absolute bytecode index"
   (let [insns (get-insns method)]
@@ -1068,10 +1083,12 @@
         ; FIXME this looks kinda arbitrary
         body (if (identical? (-> load-method :stack peek) (-> load-method :return))
                (:stack load-method)
-               (concat (:stack load-method) [(:return load-method)]))]
+               (concat (:stack load-method) [(:return load-method)]))
+        ; filter out irrelevant stack items
+        body (conj-if (filter #(statement-types (:type %)) body) (:error load-method))
+        body (process-namespace body)]
     {:type :init
-     ; filter out irrelevant stack items
-     :body (conj-if (filter #(statement-types (:type %)) body) (:error load-method))}))
+     :body body}))
 
 (defn decompile-class [clazz]
   "Decompiles single class file"

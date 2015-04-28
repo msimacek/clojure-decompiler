@@ -377,5 +377,7 @@
 (deftest-decompile toplevel-if
   [(println "haha")
    (if *command-line-args* (println 1) (println 2))])
-; (deftest-decompile ns-statement
-;   (ns cool-namespace))
+
+(deftest-decompile ns-statement
+  [(ns cool-namespace)
+   (def one 1)])
