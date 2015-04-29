@@ -192,17 +192,6 @@
                 ; 1 (ifnull) - 1 (getstatic) + 2 (if_acmpeq) = 2
                 (assoc context :stack (pop-n stack 2)))))
 
-(defmethod process-insn IF_ACMPNE
-  [index insn {:keys [stack] :as context}]
-  "Decompiles object comparison if that doesn't appear in free code, only as
-  part of auxiliary constructs that implement case expression"
-  (process-if {:type :invoke
-               :fn-expr {:type :var
-                         :name 'not=}
-               :args (peek-n stack 2)}
-              (+ index (.getIndex insn))
-              (assoc context :stack (pop-n stack 2))))
-
 ; group numeric predicate instructions together to have one method for all of
 ; them
 (derive LCMP ::number-predicate)
@@ -233,7 +222,10 @@
                 ; instructions that compare against 0
                 (assoc context :stack (pop-n stack 2)))))
 
-(defmethod process-insn IF_ICMPNE
+(derive IF_ICMPNE ::cmpne)
+(derive IF_ACMPNE ::cmpne)
+
+(defmethod process-insn ::cmpne
   [index insn {:keys [stack] :as context}]
   "Decompiles if expression where the condition is a comparison of two
   primitive booleans (compared as integers)"
