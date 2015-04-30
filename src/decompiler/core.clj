@@ -53,7 +53,7 @@
 
 (defn demunge [what]
   "Inverse operation of clojure.core/munge"
-  (symbol (Compiler/demunge what)))
+  (symbol (Compiler/demunge (if (symbol? what) (name what) what))))
 
 (defn insn-method [insn pool]
   "Gets qualified method name from invoke instruction in format
@@ -938,8 +938,9 @@
   "Converts expression tree into Clojure code"
   (letfn
     [; helper to get name of local variable
-     (local-name [expr] (symbol (or (:name expr)
-                                    (str "local" (- (:index expr) (count fn-args) -1)))))
+     (local-name [expr]
+       (demunge (or (:name expr)
+                    (str "local" (- (:index expr) (count fn-args) -1)))))
      ; convert single expression
      (render-single [expr]
        (let [args (map render-chain-do (:args expr ()))]
@@ -963,7 +964,7 @@
            :let (render-binding 'let expr)
            :loop (render-binding 'loop expr)
            :local (if-let [assign (:assign expr)] (render-chain-do assign) (local-name expr))
-           :var (:name expr)
+           :var (demunge (:name expr))
            :if (let [c (render-chain-do (:cond expr))
                      t (render-chain-do (:then expr))
                      f (render-chain-do (:else expr))]
