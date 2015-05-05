@@ -676,6 +676,14 @@
                {:type :const
                 :value (clojure.lang.RT/readString (-> args first :value))}
 
+               #{"java.util.regex.Pattern/compile"}
+               ; regular expression constant
+               (let [arg (first args)]
+                 (if (= (:type arg) :const)
+                   {:type :const
+                    :value (java.util.regex.Pattern/compile (:value arg))}
+                   expr))
+
                #{"clojure.lang.Reflector/invokeConstructor"}
                ; reflective call to constructor, will produce interop
                ; expression of ctor invocation if the pattern matches
