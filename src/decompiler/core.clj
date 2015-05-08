@@ -15,8 +15,8 @@
       PopInstruction ArithmeticInstruction
       ACONST_NULL ARETURN RETURN DUP LDC LDC_W LDC2_W INVOKESTATIC PUTSTATIC
       GETSTATIC INVOKEVIRTUAL INVOKEINTERFACE INVOKESPECIAL NEW IFNULL IFEQ
-      IF_ACMPEQ IF_ACMPNE IF_ICMPNE ANEWARRAY AASTORE GETFIELD LCMP DCMPL
-      DCMPG INSTANCEOF)))
+      IF_ACMPEQ IF_ACMPNE IF_ICMPNE ANEWARRAY AASTORE GETFIELD PUTFIELD LCMP
+      DCMPL DCMPG INSTANCEOF)))
 
 (def ^:dynamic *debug* false)
 
@@ -761,12 +761,28 @@
                ; closure captured binding
                {:type :arg
                 :name field-name}
-               ; interop filed access
+               ; interop field access
                {:type :invoke-member
                 :args [top]
                 :member field-name})]
     (assoc context
            :stack (conj (pop stack) expr))))
+
+(defmethod process-insn PUTFIELD
+  [_ insn {:keys [stack pool statement] :as context}]
+  "Produces a set! call that sets instance field of an object"
+  (let [value (eliminate-cast (peek stack) (.getFieldType insn pool))
+        obj (peek-at stack 1)
+        expr {:type :set-field
+              :preceding-statement statement
+              :field (.getFieldName insn pool)
+              :target obj
+              :value value}]
+    (assoc context
+           ; The object was dup'ed by dup_x1. We ignore dup_x1, so we don't
+           ; need to pop it
+           :stack (conj (pop stack) expr)
+           :statement nil)))
 
 (defmethod process-insn INVOKEINTERFACE
   [_ insn {:keys [stack pool statement code] :as context}]
@@ -969,6 +985,9 @@
            :invoke-member (list* (symbol (str \. (:member expr))) args)
            :recur (list* 'recur (map render-chain-do @(:args expr)))
            :get-field (symbol (str (:class expr) \/ (:field expr)))
+           :set-field (list 'set! (list (symbol (str \. (:field expr)))
+                                        (render-chain-do (:target expr)))
+                            (render-chain-do (:value expr)))
            :let (render-binding 'let expr)
            :loop (render-binding 'loop expr)
            :local (if-let [assign (:assign expr)] (render-chain-do assign) (local-name expr))
