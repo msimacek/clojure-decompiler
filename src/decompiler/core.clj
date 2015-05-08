@@ -4,7 +4,7 @@
     [decompiler.data :as data]
     [clojure.string :as string]
     [clojure.java.io :as io]
-    [clojure.pprint :refer [pprint]]
+    [clojure.pprint :as pprint]
     [clojure.tools.logging :as log])
   (:import
     (clojure.lang Reflector)
@@ -1043,7 +1043,7 @@
                              :return :value))
         ; local variable (and arguments) table (names and indices where they start
         var-table (-> invoke .getLocalVariableTable .getLocalVariableTable)]
-    (when *debug* (pprint return))
+    (when *debug* (pprint/pprint return))
     {:type :fn-single
      ; minimal arity for variadic, nil for others
      :required-arity required-arity
@@ -1157,6 +1157,11 @@
   "Decompile class files found in paths into Clojure source code"
   (render-classes (decompile-classes paths)))
 
+(defn pprint-code [code]
+  (pprint/write code :pretty true :stream *out* :dispatch pprint/code-dispatch)
+  (println)
+  (println))
+
 (defn -main [& paths]
   "Entry point. Decompiles class files given as commandline arguments"
-  (dorun (map pprint (do-decompile paths))))
+  (dorun (map pprint-code (do-decompile paths))))
