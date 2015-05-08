@@ -1158,9 +1158,11 @@
   (render-classes (decompile-classes paths)))
 
 (defn pprint-code [code]
-  (pprint/write code :pretty true :stream *out* :dispatch pprint/code-dispatch)
-  (println)
-  (println))
+  "Pretty prints Clojure structures as code"
+  ; workaround for bug CLJ-1361
+  (with-redefs [pprint/pprint-ns-reference empty]
+    (pprint/write code :pretty true :stream *out* :dispatch pprint/code-dispatch))
+  (println \newline))
 
 (defn -main [& paths]
   "Entry point. Decompiles class files given as commandline arguments"
