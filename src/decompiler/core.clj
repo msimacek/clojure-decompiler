@@ -1206,10 +1206,20 @@
 (defn -main [& args]
   "Entry point. Decompiles class files given as commandline arguments"
   (let [cli-opts [["-o" "--output DIR" "Output directory"
-                   :default "decompiled"]]
-        {paths :arguments {out-dir :output} :options
+                   :default "decompiled"]
+                  ["-h" "--help" "Print usage"]]
+        {paths :arguments
+         {out-dir :output help :help} :options
+         summary :summary
          errors :errors} (cli/parse-opts args cli-opts)]
     (when errors (smap #(log/error %) errors) (System/exit 1))
+    (when (or help (empty? paths))
+      (println (str "Usage: java -jar decompiler.jar [-o DIR] [PATHS]\n"
+                    "Decompiles Clojure code from class files found in PATHS.\n"
+                    "Recurses into directories.\n"
+                    "Options:\n"
+                    summary))
+      (System/exit 0))
     (-> (io/file out-dir) .mkdirs)
     (smap #(output-source-file % out-dir)
                 (do-decompile paths))))
