@@ -971,6 +971,8 @@
      (local-name [expr]
        (demunge (or (:name expr)
                     (str "local" (- (:index expr) (count fn-args) -1)))))
+     ; helper to remove unnecessary qualification from Java classes
+     (unqualify [x] (string/replace x "java.lang." ""))
      ; convert single expression
      (render-single [expr]
        (let [args (map render-chain-do (:args expr ()))]
@@ -979,10 +981,10 @@
                     (if (symbol? v) (list 'quote v) v))
            :const-coll ((:ctor expr) (map render-chain-do (:value expr)))
            :invoke (list* (render-chain-do (:fn-expr expr)) args)
-           :invoke-static (list* (symbol (str (:class expr) \/ (:method expr))) args)
+           :invoke-static (list* (symbol (str (unqualify (:class expr)) \/ (:method expr))) args)
            :invoke-ctor (if-let [func (fn-map (:class expr))]
                           (render-fn 'fn func (if-not (:local-name expr) (:name func)))
-                          (list* (symbol (str (:class expr) \.)) args))
+                          (list* (symbol (str (unqualify (:class expr)) \.)) args))
            :def (let [sym (-> expr :var :name)]
                   (if-let [func (and (-> expr :value :type (= :invoke-ctor))
                                      (fn-map (-> expr :value :class)))]
@@ -990,7 +992,7 @@
                     (list 'def sym (render-chain-do (:value expr)))))
            :invoke-member (list* (symbol (str \. (:member expr))) args)
            :recur (list* 'recur (map render-chain-do @(:args expr)))
-           :get-field (symbol (str (:class expr) \/ (:field expr)))
+           :get-field (symbol (str (unqualify (:class expr)) \/ (:field expr)))
            :set-field (list 'set! (list (symbol (str \. (:field expr)))
                                         (render-chain-do (:target expr)))
                             (render-chain-do (:value expr)))

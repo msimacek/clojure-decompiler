@@ -91,18 +91,17 @@
 (deftest-decompile clj-call-nested
   (defn test-fn [arg1 arg2] (str (str arg1 2) 1)))
 (deftest-decompile call-static
-  (defn test-fn [arg1 arg2] (java.lang.Double/compare 1.0 1.00001)))
+  (defn test-fn [arg1 arg2] (Double/compare 1.0 1.00001)))
 (deftest-decompile call-static-void
-  (defn test-fn [arg1 arg2] (java.lang.System/exit 1)))
+  (defn test-fn [arg1 arg2] (System/exit 1)))
 (deftest-decompile call-static-reflection
-  (defn test-fn [arg1 arg2] (java.lang.Math/abs arg1)))
+  (defn test-fn [arg1 arg2] (Math/abs arg1)))
 (deftest-decompile get-static
-  (defn test-fn [] java.lang.Double/NaN))
+  (defn test-fn [] Double/NaN))
 (deftest-decompile call-ctor
-  ; TODO get rid of java.lang
-  (defn test-fn [] (java.lang.StringBuilder. "I can haz instance?")))
+  (defn test-fn [] (StringBuilder. "I can haz instance?")))
 (deftest-decompile call-ctor-overloaded
-  (defn test-fn [arg1] (java.lang.Throwable. arg1)))
+  (defn test-fn [arg1] (Throwable. arg1)))
 (deftest-decompile call-virtual-reflective-no-arg
   (defn test-fn [arg1] (.getSimpleRemoteStatelessSessionProxyFactoryBean arg1)))
 (deftest-decompile call-virtual-reflective-args
@@ -114,7 +113,7 @@
 (deftest-decompile call-virtual
   (defn test-fn [] (.toString (java.awt.Point. 1 2))))
 (deftest-decompile call-virtual-void
-  (defn test-fn [] (.println java.lang.System/out "bbb")))
+  (defn test-fn [] (.println System/out "bbb")))
 (deftest-decompile instanceof
   (defn test-fn [] (instance? java.io.InputStream *in*)))
 
@@ -144,12 +143,12 @@
   (defn test-fn [x y]
     (let [local1 (double x)
           local2 (double y)]
-      (java.lang.Math/sqrt (+ (* local1 local2) (- local1))))))
+      (Math/sqrt (+ (* local1 local2) (- local1))))))
 (deftest-decompile primitive-arith-long
   (defn test-fn [x y]
     (let [local1 (long x)
           local2 (long y)]
-      (java.lang.Math/abs (quot (rem local1 local2) (inc local1))))))
+      (Math/abs (quot (rem local1 local2) (inc local1))))))
 
 (deftest-decompile return-cast-char
   (defn test-fn [x] (char (+ 97 x))))
@@ -183,7 +182,7 @@
 (deftest-decompile conditional-recur
   (defn test-fn [arg1 arg2] (if (seq arg1) (recur (first arg1) (cons arg1 arg2)) arg2)))
 (deftest-decompile if-primitive
-  (defn test-fn [arg1 arg2] (if (java.lang.Double/isNaN 0.1) "NaN" arg1)))
+  (defn test-fn [arg1 arg2] (if (Double/isNaN 0.1) "NaN" arg1)))
 (deftest-decompile if-primitive2
   (defn test-fn [arg1 arg2] (if (> arg1 arg2) (inc arg1) arg1)))
 (deftest-decompile if-primitive-predicate1
@@ -286,7 +285,7 @@
 (deftest-decompile even-more-statements
   (defn test-fn [arg1]
     (println 0)
-    (.println java.lang.System/out "bbb")
+    (.println System/out "bbb")
     (println arg1)))
 (deftest-decompile multiple-statements-const
   (defn test-fn [arg1]
