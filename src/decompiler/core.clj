@@ -24,6 +24,8 @@
 
 (def ^:dynamic *debug* false)
 
+(def smap (comp dorun map))
+
 ; advanced stack operations
 (defn pop-n [stack n] (let [c (count stack)] (subvec stack 0 (- c n))))
 (defn peek-n [stack n] (let [c (count stack)] (subvec stack (- c n) c)))
@@ -481,12 +483,12 @@
                     :recurs recurs})]
 
         ; propagate locals to recur. TODO do this without atoms
-        (dorun (map (fn [e]
+        (smap (fn [e]
                       (swap! (:args e) (constantly
                                          (filter
                                            #((set (map :index locals)) (:index %))
                                            (:vars e)))))
-                    recurs))
+                    recurs)
 
         (assoc inner-context
                :code nil ; it's nil already, just making it obvious
@@ -1198,14 +1200,16 @@
   out dir"
   (let [file (io/file out-dir (first code-wrapper))]
     (with-open [writer (io/writer file)]
-      (dorun (map #(pprint-code % writer) (second code-wrapper))))
+      (smap #(pprint-code % writer) (second code-wrapper)))
     (log/info "Created file " (str file))))
 
 (defn -main [& args]
   "Entry point. Decompiles class files given as commandline arguments"
   (let [cli-opts [["-o" "--output DIR" "Output directory"
                    :default "decompiled"]]
-        {paths :arguments {out-dir :output} :options} (cli/parse-opts args cli-opts)]
+        {paths :arguments {out-dir :output} :options
+         errors :errors} (cli/parse-opts args cli-opts)]
+    (when errors (smap #(log/error %) errors) (System/exit 1))
     (-> (io/file out-dir) .mkdirs)
-    (dorun (map #(output-source-file % out-dir)
-                (do-decompile paths)))))
+    (smap #(output-source-file % out-dir)
+                (do-decompile paths))))
