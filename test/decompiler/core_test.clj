@@ -17,7 +17,10 @@
       (with-open [rdr (StringReader. (apply str code))]
         (Compiler/compile rdr "test_code.clj" "TEST_SOURCE")))
     (if *debug* (println))
-    (vec (do-decompile [(str dir)]))))
+    (-> (do-decompile [(str dir)])
+        first
+        second
+        vec)))
 
 (defmacro deftest-decompile
   ([test-name code]
